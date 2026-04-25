@@ -95,7 +95,14 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
  */
 
 export const _MAX_SRC_BUF = 2 * 1024 * 1024; // 2 MB input buffer
-const _MAX_DST_BUF = 9830464; // 9.37 MB
+// Default sync-decompression cap for the level-19 layout (8MB window +
+// 3*128KB blocks + ~1MB margin). Smaller-window builds derive a tighter
+// cap from the actual linear-memory size at init time.
+const _MAX_DST_BUF_DEFAULT = 9830464; // 9.37 MB
+// Margin between end of dst sync buffer and end of linear memory; leaves
+// room for the streaming inBuff/outBuff that ZSTD_decompressStream may
+// allocate via malloc when sync mode falls back.
+const _DST_BUF_TAIL_MARGIN = 1048576; // 1 MB
 const _STREAM_RESULT: StreamResult = { buf: new Uint8Array(0), in_offset: 0 };
 class ZstdDecoder {
   private _exports!: DecoderWasmExports;
@@ -119,11 +126,12 @@ class ZstdDecoder {
   // For the period of an ongoing streaming decompression, they are also tracked within ZSTD_dctx
   private _srcPtr: number = 0;
   private _dstPtr: number = 0;
+  private _maxDstBuf: number = _MAX_DST_BUF_DEFAULT;
 
   constructor(options: DecoderOptions = {}) {
     this._dictionary = options.dictionary
-    this._maxSrcSize = Math.max(options.maxSrcSize!, _MAX_DST_BUF << 6)
-    this._maxDstSize = Math.max(options.maxDstSize!, _MAX_DST_BUF << 6)
+    this._maxSrcSize = Math.max(options.maxSrcSize!, _MAX_DST_BUF_DEFAULT << 6)
+    this._maxDstSize = Math.max(options.maxDstSize!, _MAX_DST_BUF_DEFAULT << 6)
   }
 
   /**
@@ -173,6 +181,13 @@ class ZstdDecoder {
     }
     this._srcPtr = this._exports.malloc(_MAX_SRC_BUF);
     this._dstPtr = this._srcPtr + _MAX_SRC_BUF; // We don't malloc dst buf. Its where dst buf starts. Zstd will malloc
+    // Cap the sync-decompression buffer at whatever the linear memory
+    // can actually hold; small-window builds ship with ~8 MB instead of
+    // ~16 MB and the default 9.4 MB constant would overflow.
+    this._maxDstBuf = Math.min(
+      _MAX_DST_BUF_DEFAULT,
+      this._HEAPU8.byteLength - this._dstPtr - _DST_BUF_TAIL_MARGIN,
+    );
     return this;
   }
 
@@ -197,14 +212,14 @@ class ZstdDecoder {
     if (!expectedSize) expectedSize = _fss(compressedData);
 
     // No expected size, or above thresholds for single pass => Use streaming
-    if (expectedSize > _MAX_DST_BUF || srcSize > _MAX_SRC_BUF) {
+    if (expectedSize > this._maxDstBuf || srcSize > _MAX_SRC_BUF) {
       return this.decompressStream(compressedData, true).buf;
     }
 
     const _dstPtr = this._dstPtr;
     this._exports.pb(_dstPtr);
     this._HEAPU8.set(compressedData as Uint8Array, this._srcPtr);
-    const result = this._exports.dS(_dstPtr, _MAX_DST_BUF, this._srcPtr, srcSize);
+    const result = this._exports.dS(_dstPtr, this._maxDstBuf, this._srcPtr, srcSize);
 
     if (result < 0) {
       throw new err(`dec err ${result}`);

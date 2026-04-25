@@ -49,6 +49,31 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> 
   return out;
 }
 
+describe('lvl1 variant smoke', () => {
+  test('round-trip via the lvl1 codec entrypoint', async () => {
+    const lvl1 = await import(
+      '../packages/zstd-wasm-decoder/src/_esm/index.codec.lvl1.node.js'
+    );
+    const src = txt(500);
+    const compressed = await lvl1.compress(src, { level: 1 });
+    expect(compressed.length).toBeLessThan(src.length / 2);
+    const decoded = await lvl1.decompress(compressed);
+    expect(bufEq(decoded, src)).toBe(true);
+  });
+
+  test('lvl1 wasm clamps level 3 to fast strategy without error', async () => {
+    const lvl1 = await import(
+      '../packages/zstd-wasm-decoder/src/_esm/index.codec.lvl1.node.js'
+    );
+    const src = txt(500);
+    // Upstream auto-clamps strategy=dfast→fast when DFAST is excluded.
+    // The compressed output is still a valid zstd frame.
+    const compressed = await lvl1.compress(src, { level: 3 });
+    const decoded = await lvl1.decompress(compressed);
+    expect(bufEq(decoded, src)).toBe(true);
+  });
+});
+
 describe('high-level compress/decompress', () => {
   for (const level of LEVELS) {
     test(`round-trip text @ level ${level}`, async () => {

@@ -39386,10 +39386,14 @@ void re(void) {
     dctx->format = ZSTD_f_zstd1;
 }
 
+#ifndef ZSTD_WASM_MAX_WINDOW_SIZE
+#define ZSTD_WASM_MAX_WINDOW_SIZE 8388609 /* level 19: 8 MB + 1 */
+#endif
+
 void _initialize(void) {
     /* Decoder side: same hand-folded ZSTD_createDCtx as the decoder build. */
     dctx->dictUses = ZSTD_use_indefinitely;
-    dctx->maxWindowSize = 8388609;
+    dctx->maxWindowSize = ZSTD_WASM_MAX_WINDOW_SIZE;
     /* Bump above all static data — the codec build adds compress-side
      * rodata (default cparams, code tables, etc) so 256KB is safe. */
     pb(262144);
@@ -39412,7 +39416,15 @@ void _initialize(void) {
         unsigned char* const dummy_src = (unsigned char*)malloc(8);
         unsigned char* const dummy_dst = (unsigned char*)malloc(dstCap);
         for (int i = 0; i < 8; i++) dummy_src[i] = (unsigned char)i;
-        ZSTD_compressCCtx(cctx, dummy_dst, dstCap, dummy_src, 8, 3);
+        /* Workspace is sized for the maximum level we'll ever compress at.
+         * The default codec build supports levels 1-3 (3 → dfast strategy,
+         * windowLog=21). The lvl1-only build defines this to 1, which
+         * uses fast strategy + windowLog=19 and roughly halves the
+         * workspace footprint. */
+#ifndef ZSTD_WASM_INIT_LEVEL
+#define ZSTD_WASM_INIT_LEVEL 3
+#endif
+        ZSTD_compressCCtx(cctx, dummy_dst, dstCap, dummy_src, 8, ZSTD_WASM_INIT_LEVEL);
     }
 }
 

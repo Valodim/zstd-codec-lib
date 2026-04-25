@@ -4,7 +4,7 @@ Tiny & performant decoder-only implementation of Zstandard. Optional compressor 
 
 |          |                                                                                                                                                                                                                         |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Lightweight**      | 13.19kb / 17.17kb (zipped) for size or perf. optimized decoder build<br>40kb / 52kb (zipped) for size or perf. optimized codec build (decoder + level 1-3 compressor)                                                                                                                              |
+| **Lightweight**      | 13.19kb / 17.17kb (zipped) for size or perf. optimized decoder build<br>40kb / 52kb (zipped) for size or perf. optimized codec build (decoder + level 1-3 compressor)<br>38kb / 48kb (zipped) for the lvl1-only codec build (12 MB linear memory, decoder capped to a 2 MB window, ~5kb smaller binary)                                                                                                                              |
 | **Dictionary Support** | Multiple and up to 2MB each. Compression dictionaries supported in the codec build.                                                                                                                                  |
 | **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
 | **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class for the codec build<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node 20-24, Cloudflare Workers, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/build.ts#L182) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
@@ -116,6 +116,34 @@ const out2: Uint8Array = compressSync(input, { level: 3 });
 - **Levels 1, 2, 3 only** — higher levels are intentionally excluded to keep the binary small. The compression ratio is competitive with `zstd -3` (the host CLI default), but if you need maximum ratio you'll need a different library.
 - The codec uses a fixed ~32 MB linear memory (vs the decoder's 16 MB). Allocation happens up front; the wasm doesn't grow at runtime.
 - Output frames are spec-compliant — round-tripping through the upstream `zstd` CLI is verified by CI.
+
+### Smaller variant: `zstd-wasm-decoder/codec/lvl1`
+
+If you only need level-1 compression and want the smallest possible footprint, import from `/codec/lvl1`. This drops the `dfast` strategy entirely (used by level 3 in the regular codec build) and shrinks the linear-memory budget to 12 MB:
+
+```typescript
+import {
+  compress, decompress, ZstdCompressionStream, ZstdDecompressionStream,
+} from 'zstd-wasm-decoder/codec/lvl1';                    // Default
+import { ... } from 'zstd-wasm-decoder/codec/lvl1/external';     // Same-origin .wasm
+import { ... } from 'zstd-wasm-decoder/codec/lvl1/perf';         // Perf-optimized
+import { ... } from 'zstd-wasm-decoder/codec/lvl1/cloudflare';   // CF Workers
+```
+
+Trade-offs vs the full codec:
+
+|                       | `/codec` (lvl 1-3)         | `/codec/lvl1`                                |
+|-----------------------|----------------------------|----------------------------------------------|
+| Gzipped (size build)  | 40 KB                      | **38 KB**                                    |
+| Gzipped (perf build)  | 52 KB                      | **48 KB**                                    |
+| Linear memory         | 32 MB                      | **12 MB**                                    |
+| Compression strategy  | fast + dfast               | fast only                                    |
+| Compression ratio     | best                       | ~10-15% larger output on text                |
+| Decoder window cap    | up to 8 MB (level 19)      | **2 MB (level 9)** — larger frames rejected with `frameParameter_windowTooLarge` |
+
+The asymmetry between the (level-1) compressor and the (up-to-level-9) decoder is intentional: this build only ever emits level-1 frames (512 KB window), but can still decode frames produced by other zstd tools up to level 9. Frames declaring a larger window — e.g. level-19 output from the `zstd` CLI — are refused.
+
+Passing `level: 2` or `level: 3` to a lvl1 build does not error — upstream auto-clamps to the `fast` strategy, so you get level-1-equivalent output. If you depend on the actual level-3 ratio, use the regular `/codec` entrypoint.
 
 ### Important Considerations
 - The default export is pre-minified and mangled. All builds tested against the full suite.

@@ -272,9 +272,13 @@ void re(void)
 // The ZSTD_createDctx, renamed to _initialize so the compiler understands that this is the entrypoint.
 // Those two values are the only ones that are set, the rest is zero initialized implicitly.
 // -> since we previously already reserved sufficient space for ZSTD_dctx.
+#ifndef ZSTD_WASM_MAX_WINDOW_SIZE
+#define ZSTD_WASM_MAX_WINDOW_SIZE 8388609 /* level 19: 8 MB + 1 */
+#endif
+
 void _initialize(void) {
     dctx->dictUses = ZSTD_use_indefinitely;
-    dctx->maxWindowSize = 8388609;
+    dctx->maxWindowSize = ZSTD_WASM_MAX_WINDOW_SIZE;
     pb(131072);
 }
 
