@@ -97,12 +97,18 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
 export const _MAX_SRC_BUF = 2 * 1024 * 1024; // 2 MB input buffer
 const _MAX_DST_BUF = 9830464; // 9.37 MB
 const _STREAM_RESULT: StreamResult = { buf: new Uint8Array(0), in_offset: 0 };
-const _streamInputStructPtr = 8192;
-const _streamOutputStructPtr = 8208;
 class ZstdDecoder {
   private _exports!: DecoderWasmExports;
   private _HEAPU8!: Uint8Array;
   private _HEAPU32!: Uint32Array;
+  /**
+   * Stream-struct offsets are 8192 in the decoder-only build (matches the
+   * 8KB stack + global-base layout). The codec build moves them up because
+   * its stack is bigger; in that case the wasm exports `getInBufferPtr` and
+   * we query it at init time.
+   */
+  private _streamInputStructPtr: number = 8192;
+  private _streamOutputStructPtr: number = 8208;
 
   private readonly _dictionary?: Uint8Array;
   private readonly _maxSrcSize: number = 0;
@@ -143,6 +149,15 @@ class ZstdDecoder {
 
     this._HEAPU8 = new Uint8Array(_memory.buffer);
     this._HEAPU32 = new Uint32Array(_memory.buffer);
+
+    // Codec wasm exports getInBufferPtr to advertise its stream-struct
+    // location (the codec build uses a larger stack so the structs
+    // can't live at the decoder's 8192 offset). Query when present.
+    const getPtr = (this._exports as unknown as { getInBufferPtr?: () => number }).getInBufferPtr;
+    if (typeof getPtr === 'function') {
+      this._streamInputStructPtr = getPtr();
+      this._streamOutputStructPtr = this._streamInputStructPtr + 16;
+    }
 
     this._exports._initialize();
 
@@ -249,18 +264,18 @@ class ZstdDecoder {
       const toProcess = Math.min(inLen - offset, 262150); 
       this._HEAPU8.set((input as Uint8Array).subarray(offset, offset + toProcess), this._srcPtr);
 
-      this._writeStreamStruct(_streamInputStructPtr, this._srcPtr, toProcess);
+      this._writeStreamStruct(this._streamInputStructPtr, this._srcPtr, toProcess);
 
       if (dstOffset == dstBufStart) {
-        this._writeStreamStruct(_streamOutputStructPtr, dstOffset, 917501);
+        this._writeStreamStruct(this._streamOutputStructPtr, dstOffset, 917501);
       }
 
       // Process all data in current block
-      while (this._readStreamPos(_streamInputStructPtr) < toProcess) {
+      while (this._readStreamPos(this._streamInputStructPtr) < toProcess) {
         const result = this._exports.ds();
         if (result < 0) throw new err(`dec err ${result}`);
 
-        const outputPos = this._readStreamPos(_streamOutputStructPtr);
+        const outputPos = this._readStreamPos(this._streamOutputStructPtr);
 
         totalOutputSize += dstOffset == dstBufStart ? outputPos : outputPos - lastOut;
         lastOut = outputPos;
@@ -270,7 +285,7 @@ class ZstdDecoder {
           if (dstOffset >= dstMaxBuf) {
             output.push(this._HEAPU8.slice(dstBufStart, dstOffset));
             dstOffset = dstBufStart;
-            this._writeStreamStruct(_streamOutputStructPtr, dstOffset, 917501);
+            this._writeStreamStruct(this._streamOutputStructPtr, dstOffset, 917501);
           }
 
           if (totalOutputSize > this._maxDstSize) {

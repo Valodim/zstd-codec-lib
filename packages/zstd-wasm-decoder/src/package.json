@@ -59,8 +59,47 @@
       "import": "./_esm/index.web.perf.js",
       "default": "./_esm/index.web.perf.js"
     },
+    "./codec": {
+      "types": "./_types/index.codec.web.inlined.d.ts",
+      "node": {
+        "types": "./_types/index.codec.node.d.ts",
+        "import": "./_esm/index.codec.node.js",
+        "default": "./_esm/index.codec.node.js"
+      },
+      "browser": {
+        "types": "./_types/index.codec.web.inlined.d.ts",
+        "import": "./_esm/index.codec.inlined.js",
+        "default": "./_esm/index.codec.inlined.js"
+      },
+      "development": "./_esm/index.codec.inlined.js",
+      "import": "./_esm/index.codec.inlined.js",
+      "default": "./_esm/index.codec.node.js"
+    },
+    "./codec/external": {
+      "types": "./_types/index.codec.web.d.ts",
+      "development": "./_esm/index.codec.inlined.js",
+      "import": "./_esm/index.codec.web.js",
+      "default": "./_esm/index.codec.web.js"
+    },
+    "./codec/cloudflare": {
+      "types": "./_types/index.codec.cloudflare.d.ts",
+      "import": "./_esm/index.codec.cloudflare.js",
+      "default": "./_esm/index.codec.cloudflare.js"
+    },
+    "./codec/perf": {
+      "types": "./_types/index.codec.web.inlined.d.ts",
+      "import": "./_esm/index.codec.inlined.perf.js",
+      "default": "./_esm/index.codec.inlined.perf.js"
+    },
+    "./codec/perf/external": {
+      "types": "./_types/index.codec.web.d.ts",
+      "import": "./_esm/index.codec.web.perf.js",
+      "default": "./_esm/index.codec.web.perf.js"
+    },
     "./wasm": "./zstd-decoder.wasm",
     "./wasm-perf": "./zstd-decoder-perf.wasm",
+    "./codec/wasm": "./zstd-codec.wasm",
+    "./codec/wasm-perf": "./zstd-codec-perf.wasm",
     "./types": {
       "types": "./_types/index.d.ts",
       "default": "./_types/index.d.ts"
@@ -83,6 +122,21 @@
       ],
       "perf/external": [
         "./_types/index.web.d.ts"
+      ],
+      "codec": [
+        "./_types/index.codec.web.inlined.d.ts"
+      ],
+      "codec/external": [
+        "./_types/index.codec.web.d.ts"
+      ],
+      "codec/cloudflare": [
+        "./_types/index.codec.cloudflare.d.ts"
+      ],
+      "codec/perf": [
+        "./_types/index.codec.web.inlined.d.ts"
+      ],
+      "codec/perf/external": [
+        "./_types/index.codec.web.d.ts"
       ],
       "types": [
         "./_types/index.d.ts"

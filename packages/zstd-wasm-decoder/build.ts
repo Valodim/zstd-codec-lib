@@ -22,6 +22,8 @@ const TYPES_DIR = join(SRC_DIR, '_types');
 const BUILD_DIR = join(PKG_DIR, 'build');
 const WASM_SOURCE_PATH = join(BUILD_DIR, 'zstd.wasm');
 const WASM_PERF_PATH = join(BUILD_DIR, 'zstd-perf.wasm');
+const WASM_CODEC_PATH = join(BUILD_DIR, 'zstd-codec.wasm');
+const WASM_CODEC_PERF_PATH = join(BUILD_DIR, 'zstd-codec-perf.wasm');
 const ROOT_DIR = join(PKG_DIR, '..', '..');
 const LICENSE_PATH = join(ROOT_DIR, 'LICENSE');
 const README_PATH = join(ROOT_DIR, 'README.md');
@@ -32,18 +34,17 @@ const PREP = process.argv.includes('--prep');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 });
 
-if (!existsSync(WASM_SOURCE_PATH)) {
-  console.error('WASM file not found at:', WASM_SOURCE_PATH);
-  process.exit(1);
-}
-
-if (!existsSync(WASM_PERF_PATH)) {
-  console.error('Perf WASM file not found at:', WASM_PERF_PATH);
-  process.exit(1);
+for (const p of [WASM_SOURCE_PATH, WASM_PERF_PATH, WASM_CODEC_PATH, WASM_CODEC_PERF_PATH]) {
+  if (!existsSync(p)) {
+    console.error('WASM file not found at:', p);
+    process.exit(1);
+  }
 }
 
 console.log(`WASM size-optimized: ${(Bun.file(WASM_SOURCE_PATH).size).toLocaleString()} bytes`);
-console.log(`WASM perf-optimized: ${(Bun.file(WASM_PERF_PATH).size).toLocaleString()} bytes\n`);
+console.log(`WASM perf-optimized: ${(Bun.file(WASM_PERF_PATH).size).toLocaleString()} bytes`);
+console.log(`Codec size-optimized: ${(Bun.file(WASM_CODEC_PATH).size).toLocaleString()} bytes`);
+console.log(`Codec perf-optimized: ${(Bun.file(WASM_CODEC_PERF_PATH).size).toLocaleString()} bytes\n`);
 
 const terserOptions = {
   ecma: 2020 as const,
@@ -146,6 +147,28 @@ const configs: Array<{
     minify: true,
   },
   {
+    name: 'Codec Web ESM (minified)',
+    entry: join(SRC_DIR, 'index.codec.web.ts'),
+    outfile: 'index.codec.web.js',
+    target: 'browser',
+    minify: true,
+  },
+  {
+    name: 'Codec Cloudflare Workers ESM (minified)',
+    entry: join(SRC_DIR, 'index.codec.cloudflare.ts'),
+    outfile: 'index.codec.cloudflare.js',
+    target: 'node',
+    minify: true,
+    external: ['*.wasm'],
+  },
+  {
+    name: 'Codec Node.js ESM',
+    entry: join(SRC_DIR, 'index.codec.node.ts'),
+    outfile: 'index.codec.node.js',
+    target: 'node',
+    minify: true,
+  },
+  {
     name: 'Core Library',
     entry: join(SRC_DIR, 'zstd-wasm.ts'),
     outfile: 'zstd-wasm.js',
@@ -240,18 +263,28 @@ function compressWithZopfli(inputPath: string, iterations: number): Buffer {
 
 const wasmBase64 = compressWithZopfli(WASM_SOURCE_PATH, 2000).toString('base64');
 const wasmPerfBase64 = compressWithZopfli(WASM_PERF_PATH, 200).toString('base64');
+const wasmCodecBase64 = compressWithZopfli(WASM_CODEC_PATH, 200).toString('base64');
+const wasmCodecPerfBase64 = compressWithZopfli(WASM_CODEC_PERF_PATH, 100).toString('base64');
 
-async function buildInlined(variant: 'size' | 'perf') {
-  const base64 = variant === 'perf' ? wasmPerfBase64 : wasmBase64;
+async function buildInlined(
+  flavor: 'decoder' | 'codec',
+  variant: 'size' | 'perf',
+) {
+  const isCodec = flavor === 'codec';
+  const base64 = isCodec
+    ? (variant === 'perf' ? wasmCodecPerfBase64 : wasmCodecBase64)
+    : (variant === 'perf' ? wasmPerfBase64 : wasmBase64);
   const suffix = variant === 'perf' ? '.perf' : '';
+  const entry = isCodec ? 'index.codec.web.inlined.ts' : 'index.web.inlined.ts';
+  const stem = isCodec ? 'index.codec.inlined' : 'index.inlined';
 
   const result = await Bun.build({
-    entrypoints: [join(SRC_DIR, 'index.web.inlined.ts')],
+    entrypoints: [join(SRC_DIR, entry)],
     outdir: ESM_DIR,
     target: 'browser',
     format: 'esm',
     minify: true,
-    naming: `index.inlined${suffix}.js`,
+    naming: `${stem}${suffix}.js`,
     sourcemap: 'linked',
     external: [],
     emitDCEAnnotations: true,
@@ -259,34 +292,41 @@ async function buildInlined(variant: 'size' | 'perf') {
   });
 
   if (result.success) {
-    const filePath = join(ESM_DIR, `index.inlined${suffix}.js`);
+    const filePath = join(ESM_DIR, `${stem}${suffix}.js`);
     let code = readFileSync(filePath, 'utf8');
     code = code.replace('__WASM_BASE64_PLACEHOLDER__', base64);
     writeFileSync(filePath, code);
 
     const minified = await minify(code, terserOptions);
     if (minified.code) {
-      writeFileSync(join(ESM_DIR, `index.inlined${suffix}.min.js`), minified.code);
-      const gzipBytes = gzipSync(minified.code, {
-        level: 6,
-      }).length;
+      writeFileSync(join(ESM_DIR, `${stem}${suffix}.min.js`), minified.code);
+      const gzipBytes = gzipSync(minified.code, { level: 6 }).length;
       console.log(
-        `Built (minified): index.inlined${suffix}.min.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
+        `Built (minified): ${stem}${suffix}.min.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
       );
     }
   }
 }
 
-await buildInlined('size');
-await buildInlined('perf');
+await buildInlined('decoder', 'size');
+await buildInlined('decoder', 'perf');
+await buildInlined('codec', 'size');
+await buildInlined('codec', 'perf');
 
 const webJs = readFileSync(join(ESM_DIR, 'index.web.js'), 'utf8');
 const webPerfJs = webJs.replace(/zstd-decoder\.wasm/g, 'zstd-decoder-perf.wasm');
 writeFileSync(join(ESM_DIR, 'index.web.perf.js'), webPerfJs);
 console.log('Built: index.web.perf.js (via string replacement)');
 
+const codecWebJs = readFileSync(join(ESM_DIR, 'index.codec.web.js'), 'utf8');
+const codecWebPerfJs = codecWebJs.replace(/zstd-codec\.wasm/g, 'zstd-codec-perf.wasm');
+writeFileSync(join(ESM_DIR, 'index.codec.web.perf.js'), codecWebPerfJs);
+console.log('Built: index.codec.web.perf.js (via string replacement)');
+
 copyFileSync(WASM_SOURCE_PATH, join(ESM_DIR, 'zstd-decoder.wasm'));
 copyFileSync(WASM_PERF_PATH, join(ESM_DIR, 'zstd-decoder-perf.wasm'));
+copyFileSync(WASM_CODEC_PATH, join(ESM_DIR, 'zstd-codec.wasm'));
+copyFileSync(WASM_CODEC_PERF_PATH, join(ESM_DIR, 'zstd-codec-perf.wasm'));
 try {
   execSync('tsc --project tsconfig.json', {
     cwd: PKG_DIR,

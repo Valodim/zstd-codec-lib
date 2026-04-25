@@ -31,6 +31,48 @@ export interface DecoderWasmExports extends BaseWasmExports {
   re(): number;
 }
 
+/*
+ * Codec-variant exports: superset of decoder exports.
+ */
+export interface CodecWasmExports extends DecoderWasmExports {
+  /** Returns the address of the in/out stream-struct pair (16+16 bytes). */
+  getInBufferPtr(): number;
+
+  /** Reset compression context for a fresh frame at level 1-3. */
+  ic(level: number): number;
+
+  /** Load a compression dictionary. */
+  cD(dictPtr: number, dictSize: number): number;
+
+  /** Single-shot compress at a given level. */
+  cs(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number, level: number): number;
+
+  /** Streaming compress step. endOp: 0=continue 1=flush 2=end-of-frame. */
+  cS(endOp: number): number;
+}
+
+/**
+ * Configuration options for the ZSTD encoder.
+ */
+export interface EncoderOptions {
+  /** Compression dictionary */
+  dictionary?: Uint8Array;
+
+  /** Compression level (1-3 supported, default 3) */
+  level?: number;
+
+  /** Maximum (uncompressed) input buffer size for sync compression */
+  maxSrcSize?: number;
+}
+
+/**
+ * Options for high-level codec API surface.
+ */
+export interface CodecOptions extends EncoderOptions {
+  /** Path to the WASM module (overrides default loader URL) */
+  wasmPath?: string;
+}
+
 /**
  * Configuration options for the ZSTD decoder.
  */
