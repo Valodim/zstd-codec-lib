@@ -1,5 +1,7 @@
 node_modules
 
+/testdata
+
 *.tgz
 *.js.map
 *.d.ts.map
