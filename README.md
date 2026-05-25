@@ -7,7 +7,7 @@ Tiny & performant decoder-only implementation of Zstandard. Optional compressor 
 | **Lightweight**      | 13.19kb / 17.17kb (zipped) for size or perf. optimized decoder build<br>40kb / 52kb (zipped) for size or perf. optimized codec build (decoder + level 1-3 compressor)<br>38kb / 48kb (zipped) for the lvl1-only codec build (12 MB linear memory, decoder capped to a 2 MB window, ~5kb smaller binary)                                                                                                                              |
 | **Dictionary Support** | Multiple and up to 2MB each. Compression dictionaries supported in the codec build.                                                                                                                                  |
 | **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
-| **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class for the codec build<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node 20-24, Cloudflare Workers, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/build.ts#L182) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
+| **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class for the codec build<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node 20-24, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/build.ts#L182) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
 | **Tested**           | Validated against vectors from the zstd reference implementation. Codec output cross-decoded by the host `zstd` CLI in CI.                                                                                                              |
 | **Zero deps**        | No runtime dependencies (excluding build); compiled from source using latest clang & binaryen                                                                                        |
 
@@ -27,9 +27,6 @@ from 'zstd-wasm-decoder/external'; // .wasm fetched from same-origin
 import { ... } // If you need the extra perf. (+30%) for +4kb in the browser
 from 'zstd-wasm-decoder/perf' // or perf/external
                               // non-browser env uses perf. by default
-
-import { ... }                
-from 'zstd-wasm-decoder/cloudflare'; // for cloudflare workers
 ```
 ```typescript
 // 1. Simple decompression (with optional dictionary)
@@ -84,7 +81,6 @@ import {
 
 import { ... } from 'zstd-wasm-decoder/codec/external';   // .wasm fetched from same-origin
 import { ... } from 'zstd-wasm-decoder/codec/perf';       // perf-optimized variant
-import { ... } from 'zstd-wasm-decoder/codec/cloudflare'; // Cloudflare Workers
 ```
 
 ```typescript
@@ -127,7 +123,6 @@ import {
 } from 'zstd-wasm-decoder/codec/lvl1';                    // Default
 import { ... } from 'zstd-wasm-decoder/codec/lvl1/external';     // Same-origin .wasm
 import { ... } from 'zstd-wasm-decoder/codec/lvl1/perf';         // Perf-optimized
-import { ... } from 'zstd-wasm-decoder/codec/lvl1/cloudflare';   // CF Workers
 ```
 
 Trade-offs vs the full codec:

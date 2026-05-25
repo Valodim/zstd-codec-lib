@@ -44,11 +44,6 @@
       "import": "./_esm/index.web.js",
       "default": "./_esm/index.web.js"
     },
-    "./cloudflare": {
-      "types": "./_types/index.cloudflare.d.ts",
-      "import": "./_esm/index.cloudflare.js",
-      "default": "./_esm/index.cloudflare.js"
-    },
     "./perf": {
       "types": "./_types/index.web.inlined.d.ts",
       "import": "./_esm/index.inlined.perf.js",
@@ -80,11 +75,6 @@
       "development": "./_esm/index.small.inlined.js",
       "import": "./_esm/index.web.small.js",
       "default": "./_esm/index.web.small.js"
-    },
-    "./small/cloudflare": {
-      "types": "./_types/index.cloudflare.small.d.ts",
-      "import": "./_esm/index.cloudflare.small.js",
-      "default": "./_esm/index.cloudflare.small.js"
     },
     "./small/perf": {
       "types": "./_types/index.web.inlined.d.ts",
@@ -118,11 +108,6 @@
       "import": "./_esm/index.codec.web.js",
       "default": "./_esm/index.codec.web.js"
     },
-    "./codec/cloudflare": {
-      "types": "./_types/index.codec.cloudflare.d.ts",
-      "import": "./_esm/index.codec.cloudflare.js",
-      "default": "./_esm/index.codec.cloudflare.js"
-    },
     "./codec/perf": {
       "types": "./_types/index.codec.web.inlined.d.ts",
       "import": "./_esm/index.codec.inlined.perf.js",
@@ -154,11 +139,6 @@
       "development": "./_esm/index.codec.lvl1.inlined.js",
       "import": "./_esm/index.codec.lvl1.web.js",
       "default": "./_esm/index.codec.lvl1.web.js"
-    },
-    "./codec/lvl1/cloudflare": {
-      "types": "./_types/index.codec.lvl1.cloudflare.d.ts",
-      "import": "./_esm/index.codec.lvl1.cloudflare.js",
-      "default": "./_esm/index.codec.lvl1.cloudflare.js"
     },
     "./codec/lvl1/perf": {
       "types": "./_types/index.codec.lvl1.web.inlined.d.ts",
@@ -192,9 +172,6 @@
       "external": [
         "./_types/index.web.d.ts"
       ],
-      "cloudflare": [
-        "./_types/index.cloudflare.d.ts"
-      ],
       "perf": [
         "./_types/index.web.inlined.d.ts"
       ],
@@ -206,9 +183,6 @@
       ],
       "small/external": [
         "./_types/index.web.small.d.ts"
-      ],
-      "small/cloudflare": [
-        "./_types/index.cloudflare.small.d.ts"
       ],
       "small/perf": [
         "./_types/index.web.inlined.d.ts"
@@ -222,9 +196,6 @@
       "codec/external": [
         "./_types/index.codec.web.d.ts"
       ],
-      "codec/cloudflare": [
-        "./_types/index.codec.cloudflare.d.ts"
-      ],
       "codec/perf": [
         "./_types/index.codec.web.inlined.d.ts"
       ],
@@ -236,9 +207,6 @@
       ],
       "codec/lvl1/external": [
         "./_types/index.codec.lvl1.web.d.ts"
-      ],
-      "codec/lvl1/cloudflare": [
-        "./_types/index.codec.lvl1.cloudflare.d.ts"
       ],
       "codec/lvl1/perf": [
         "./_types/index.codec.lvl1.web.inlined.d.ts"

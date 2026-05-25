@@ -149,14 +149,6 @@ const configs: Array<{
     minify: true,
   },
   {
-    name: 'Cloudflare Workers ESM (minified)',
-    entry: join(SRC_DIR, 'index.cloudflare.ts'),
-    outfile: 'index.cloudflare.js',
-    target: 'node',
-    minify: true,
-    external: ['*.wasm'],
-  },
-  {
     name: 'Node.js ESM',
     entry: join(SRC_DIR, 'index.node.ts'),
     outfile: 'index.node.js',
@@ -169,14 +161,6 @@ const configs: Array<{
     outfile: 'index.web.small.js',
     target: 'browser',
     minify: true,
-  },
-  {
-    name: 'Cloudflare Workers Small ESM (minified)',
-    entry: join(SRC_DIR, 'index.cloudflare.small.ts'),
-    outfile: 'index.cloudflare.small.js',
-    target: 'node',
-    minify: true,
-    external: ['*.wasm'],
   },
   {
     name: 'Node.js Small ESM',
@@ -193,14 +177,6 @@ const configs: Array<{
     minify: true,
   },
   {
-    name: 'Codec Cloudflare Workers ESM (minified)',
-    entry: join(SRC_DIR, 'index.codec.cloudflare.ts'),
-    outfile: 'index.codec.cloudflare.js',
-    target: 'node',
-    minify: true,
-    external: ['*.wasm'],
-  },
-  {
     name: 'Codec Node.js ESM',
     entry: join(SRC_DIR, 'index.codec.node.ts'),
     outfile: 'index.codec.node.js',
@@ -213,14 +189,6 @@ const configs: Array<{
     outfile: 'index.codec.lvl1.web.js',
     target: 'browser',
     minify: true,
-  },
-  {
-    name: 'Codec lvl1 Cloudflare Workers ESM (minified)',
-    entry: join(SRC_DIR, 'index.codec.lvl1.cloudflare.ts'),
-    outfile: 'index.codec.lvl1.cloudflare.js',
-    target: 'node',
-    minify: true,
-    external: ['*.wasm'],
   },
   {
     name: 'Codec lvl1 Node.js ESM',
