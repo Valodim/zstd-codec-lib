@@ -1,6 +1,5 @@
 /**
- * Codec lvl1-only — inlined WASM. Smaller bundle (~3 KB gzipped less)
- * and 16 MB linear memory budget.
+ * Codec variant — inlined WASM. Both decode + encode in a single bundle.
  */
 
 import { _internal } from './shared.js';
@@ -24,7 +23,7 @@ export {
   setupZstdCodec,
   ZstdCompressionStream,
   ZstdEncoder,
-} from './codec-shared.js';
+} from './encoder-shared.js';
 
 export type { DecoderOptions, EncoderOptions, CodecOptions, StreamResult } from './types.js';
 

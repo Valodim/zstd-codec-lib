@@ -19,9 +19,9 @@
       "!**/*.js.map",
       "!**/test/data/*.json",
       "!**/test/benchmark/compressed/*.json",
-      "!**/packages/zstd-wasm-decoder/src/utils.ts",
-      "!**/packages/zstd-wasm-decoder/src/zstd-wasm.ts",
-      "!**/packages/zstd-wasm-decoder/src/shared.ts"
+      "!**/packages/zstd-wasm-codec/src/utils.ts",
+      "!**/packages/zstd-wasm-codec/src/zstd-wasm-decoder.ts",
+      "!**/packages/zstd-wasm-codec/src/shared.ts"
     ]
   },
   "formatter": {

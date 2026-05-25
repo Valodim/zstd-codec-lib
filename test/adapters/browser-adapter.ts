@@ -2,12 +2,12 @@
  * Browser Test Adapter
  *
  * Uses Playwright to run tests in browsers (Chromium, Firefox, WebKit).
- * This adapter tests the Web bundle (dist/zstd-wasm.js + zstd-decoder.wasm)
+ * This adapter tests the Web bundle (dist/zstd-wasm-decoder.js + zstd.wasm)
  * loaded via test-harness.html
  */
 
 import { type Browser, chromium, firefox, type Page, webkit } from 'playwright';
-import type { StreamResult, ZstdOptions } from '../../packages/zstd-wasm-decoder/src/types.js';
+import type { StreamResult, ZstdOptions } from '../../packages/zstd-wasm-codec/src/types.js';
 
 interface BrowserAdapterOptions {
   browser: 'chromium' | 'firefox' | 'webkit';

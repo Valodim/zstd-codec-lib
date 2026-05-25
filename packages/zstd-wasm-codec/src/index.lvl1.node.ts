@@ -12,9 +12,19 @@ export {
   ZstdDecompressionStream,
 } from './shared.js';
 
-export type { DecoderOptions, StreamResult } from './types.js';
+// biome-ignore lint/performance/noBarrelFile: entrypoint module
+export {
+  compress,
+  compressSync,
+  createEncoder,
+  setupZstdCodec,
+  ZstdCompressionStream,
+  ZstdEncoder,
+} from './encoder-shared.js';
+
+export type { DecoderOptions, EncoderOptions, CodecOptions, StreamResult } from './types.js';
 
 _internal._loader = () => {
-  const wasmUrl = new URL('./zstd-decoder-small-perf.wasm', import.meta.url);
+  const wasmUrl = new URL('./zstd-lvl1-perf.wasm', import.meta.url);
   return new WebAssembly.Module(readFileSync(wasmUrl));
 };

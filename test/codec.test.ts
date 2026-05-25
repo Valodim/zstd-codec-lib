@@ -16,7 +16,7 @@ import {
   ZstdCompressionStream,
   ZstdDecompressionStream,
   setupZstdCodec,
-} from '../packages/zstd-wasm-decoder/src/_esm/index.codec.node.js';
+} from '../packages/zstd-wasm-codec/src/_esm/index.node.js';
 
 const LEVELS = [1, 2, 3] as const;
 
@@ -52,7 +52,7 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> 
 describe('lvl1 variant smoke', () => {
   test('round-trip via the lvl1 codec entrypoint', async () => {
     const lvl1 = await import(
-      '../packages/zstd-wasm-decoder/src/_esm/index.codec.lvl1.node.js'
+      '../packages/zstd-wasm-codec/src/_esm/index.lvl1.node.js'
     );
     const src = txt(500);
     const compressed = await lvl1.compress(src, { level: 1 });
@@ -63,7 +63,7 @@ describe('lvl1 variant smoke', () => {
 
   test('lvl1 wasm clamps level 3 to fast strategy without error', async () => {
     const lvl1 = await import(
-      '../packages/zstd-wasm-decoder/src/_esm/index.codec.lvl1.node.js'
+      '../packages/zstd-wasm-codec/src/_esm/index.lvl1.node.js'
     );
     const src = txt(500);
     // Upstream auto-clamps strategy=dfast→fast when DFAST is excluded.
@@ -98,7 +98,7 @@ describe('ZstdEncoder direct API', () => {
   for (const level of LEVELS) {
     test(`compressSync @ level ${level}`, async () => {
       const src = txt(200);
-      const enc = await (await import('../packages/zstd-wasm-decoder/src/_esm/index.codec.node.js'))
+      const enc = await (await import('../packages/zstd-wasm-codec/src/_esm/index.node.js'))
         .createEncoder({ level });
       const out = enc.compressSync(src);
       expect(out.length).toBeLessThan(src.length / 2);

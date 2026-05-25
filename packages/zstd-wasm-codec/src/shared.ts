@@ -1,5 +1,5 @@
-import ZstdDecoder from './zstd-wasm.js';
-export { default as ZstdDecoder, _MAX_SRC_BUF } from './zstd-wasm.js';
+import ZstdDecoder from './zstd-wasm-decoder.js';
+export { default as ZstdDecoder, _MAX_SRC_BUF } from './zstd-wasm-decoder.js';
 
 import type { StreamResult, ZstdOptions } from './types.js';
 import { rzfh, type DZS, err, _concatUint8Arrays } from './utils.js';

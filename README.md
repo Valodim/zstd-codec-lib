@@ -1,32 +1,32 @@
-## zstd-wasm-decoder
+## zstd-wasm-codec
 
-Tiny & performant decoder-only implementation of Zstandard. Optional compressor (levels 1-3) available via the `/codec` subpath.
+Tiny & performant Zstandard codec for WebAssembly. Decoder + level 1-3 compressor in a single module.
 
 |          |                                                                                                                                                                                                                         |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Lightweight**      | 13.19kb / 17.17kb (zipped) for size or perf. optimized decoder build<br>40kb / 52kb (zipped) for size or perf. optimized codec build (decoder + level 1-3 compressor)<br>38kb / 48kb (zipped) for the lvl1-only codec build (12 MB linear memory, decoder capped to a 2 MB window, ~5kb smaller binary)                                                                                                                              |
-| **Dictionary Support** | Multiple and up to 2MB each. Compression dictionaries supported in the codec build.                                                                                                                                  |
+| **Lightweight**      | 40kb / 52kb (zipped) for the size/perf-optimized full codec (decoder + level 1-3 compressor)<br>38kb / 48kb (zipped) for the lvl1-only codec build (12 MB linear memory, decoder capped to a 2 MB window, ~5kb smaller binary)                                                                                                                              |
+| **Dictionary Support** | Multiple and up to 2MB each. Compression and decompression dictionaries both supported.                                                                                                                                  |
 | **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
-| **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class for the codec build<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node 20-24, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/build.ts#L182) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
+| **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node ≥ 22, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/build.ts) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
 | **Tested**           | Validated against vectors from the zstd reference implementation. Codec output cross-decoded by the host `zstd` CLI in CI.                                                                                                              |
 | **Zero deps**        | No runtime dependencies (excluding build); compiled from source using latest clang & binaryen                                                                                        |
 
 #### Implementation notes:
-- Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/bin/zstd_wasm_full.c#L41), avoiding heap growth entirely. The buffer is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-decoder/src/zstd-wasm.ts#L4) to handle the maximum memory required by level 19 compressed data.
+- Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-codec/bin/zstd_wasm_full.c), avoiding heap growth entirely. The buffer is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-codec/src/zstd-wasm-decoder.ts) to handle the maximum memory required by level 19 compressed data.
 - For use in browsers, the module is asynchronously compiled & cached at page load.
-- The codec build pulls only the `fast` (lvl 1-2) and `dfast` (lvl 3) strategies from upstream — heavy strategies (`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported.
+- Only the `fast` (lvl 1-2) and `dfast` (lvl 3) strategies are pulled from upstream — heavy strategies (`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported.
 
-## Usage - (Client Side)
+## Decompression
 ```typescript
 import { decompress, ZstdDecompressionStream, decompressStream, createDecoder } 
-from 'zstd-wasm-decoder'; // Default (Node/browser - automatically inferred)
+from 'zstd-wasm-codec'; // Default (Node/browser - automatically inferred)
 
 import { ... } // For strict CSP policies (no unsafe-eval for WASM)
-from 'zstd-wasm-decoder/external'; // .wasm fetched from same-origin
+from 'zstd-wasm-codec/external'; // .wasm fetched from same-origin
 
 import { ... } // If you need the extra perf. (+30%) for +4kb in the browser
-from 'zstd-wasm-decoder/perf' // or perf/external
-                              // non-browser env uses perf. by default
+from 'zstd-wasm-codec/perf' // or perf/external
+                            // non-browser env uses perf. by default
 ```
 ```typescript
 // 1. Simple decompression (with optional dictionary)
@@ -47,7 +47,7 @@ const ds = new ZstdDecompressionStream({
 });
 
 // Alternatively
-import { setupZstdDecoder } from 'zstd-wasm-decoder';
+import { setupZstdDecoder } from 'zstd-wasm-codec';
 await setupZstdDecoder({ 
   dictionaries: ['/dict.bin'] // Accepts URLs
 });
@@ -65,9 +65,9 @@ const result1: Uint8Array = decoder.decompressSync(data1);
 const result2: Uint8Array = decoder.decompressSync(data2);
 ```
 
-## Compression (Codec)
+## Compression
 
-Compression is opt-in via the `/codec` subpath. The codec build is a superset of the decoder — it exports both APIs from a single wasm module, so a single import gives you round-tripping.
+Compression and decompression are exported from the same module — a single import gives you round-tripping.
 
 ```typescript
 import {
@@ -77,10 +77,10 @@ import {
   ZstdDecompressionStream,
   createEncoder,
   setupZstdCodec,
-} from 'zstd-wasm-decoder/codec';                  // Default (Node/browser inferred)
+} from 'zstd-wasm-codec';                  // Default (Node/browser inferred)
 
-import { ... } from 'zstd-wasm-decoder/codec/external';   // .wasm fetched from same-origin
-import { ... } from 'zstd-wasm-decoder/codec/perf';       // perf-optimized variant
+import { ... } from 'zstd-wasm-codec/external';   // .wasm fetched from same-origin
+import { ... } from 'zstd-wasm-codec/perf';       // perf-optimized variant
 ```
 
 ```typescript
@@ -103,31 +103,31 @@ const enc = await createEncoder({
 const out = enc.compressSync(input);
 
 // 4. Pre-warm + use sync compressSync afterwards (avoids the await on hot paths)
-import { compressSync } from 'zstd-wasm-decoder/codec';
+import { compressSync } from 'zstd-wasm-codec';
 await setupZstdCodec({ level: 3 });
 const out2: Uint8Array = compressSync(input, { level: 3 });
 ```
 
 ### Compression caveats
 - **Levels 1, 2, 3 only** — higher levels are intentionally excluded to keep the binary small. The compression ratio is competitive with `zstd -3` (the host CLI default), but if you need maximum ratio you'll need a different library.
-- The codec uses a fixed ~32 MB linear memory (vs the decoder's 16 MB). Allocation happens up front; the wasm doesn't grow at runtime.
+- The codec uses a fixed ~32 MB linear memory (or 12 MB for the `/lvl1` variant). Allocation happens up front; the wasm doesn't grow at runtime.
 - Output frames are spec-compliant — round-tripping through the upstream `zstd` CLI is verified by CI.
 
-### Smaller variant: `zstd-wasm-decoder/codec/lvl1`
+### Smaller variant: `zstd-wasm-codec/lvl1`
 
-If you only need level-1 compression and want the smallest possible footprint, import from `/codec/lvl1`. This drops the `dfast` strategy entirely (used by level 3 in the regular codec build) and shrinks the linear-memory budget to 12 MB:
+If you only need level-1 compression and want the smallest possible footprint, import from `/lvl1`. This drops the `dfast` strategy entirely (used by level 3 in the full build) and shrinks the linear-memory budget to 12 MB:
 
 ```typescript
 import {
   compress, decompress, ZstdCompressionStream, ZstdDecompressionStream,
-} from 'zstd-wasm-decoder/codec/lvl1';                    // Default
-import { ... } from 'zstd-wasm-decoder/codec/lvl1/external';     // Same-origin .wasm
-import { ... } from 'zstd-wasm-decoder/codec/lvl1/perf';         // Perf-optimized
+} from 'zstd-wasm-codec/lvl1';                    // Default
+import { ... } from 'zstd-wasm-codec/lvl1/external';     // Same-origin .wasm
+import { ... } from 'zstd-wasm-codec/lvl1/perf';         // Perf-optimized
 ```
 
 Trade-offs vs the full codec:
 
-|                       | `/codec` (lvl 1-3)         | `/codec/lvl1`                                |
+|                       | default (lvl 1-3)          | `/lvl1`                                      |
 |-----------------------|----------------------------|----------------------------------------------|
 | Gzipped (size build)  | 40 KB                      | **38 KB**                                    |
 | Gzipped (perf build)  | 52 KB                      | **48 KB**                                    |
@@ -138,7 +138,7 @@ Trade-offs vs the full codec:
 
 The asymmetry between the (level-1) compressor and the (up-to-level-9) decoder is intentional: this build only ever emits level-1 frames (512 KB window), but can still decode frames produced by other zstd tools up to level 9. Frames declaring a larger window — e.g. level-19 output from the `zstd` CLI — are refused.
 
-Passing `level: 2` or `level: 3` to a lvl1 build does not error — upstream auto-clamps to the `fast` strategy, so you get level-1-equivalent output. If you depend on the actual level-3 ratio, use the regular `/codec` entrypoint.
+Passing `level: 2` or `level: 3` to a lvl1 build does not error — upstream auto-clamps to the `fast` strategy, so you get level-1-equivalent output. If you depend on the actual level-3 ratio, use the default entrypoint.
 
 ### Important Considerations
 - The default export is pre-minified and mangled. All builds tested against the full suite.
@@ -190,7 +190,7 @@ export LLVM_DIR=/usr
 
 3. **Verify toolchain:**
 ```bash
-cd packages/zstd-wasm-decoder
+cd packages/zstd-wasm-codec
 make check-tools
 ```
 
@@ -198,11 +198,11 @@ make check-tools
 
 ```bash
 # Full build (WASM + TypeScript)
-pnpm run build:all
+pnpm run build
 
 # Clean build
-pnpm run clean:decoder
-pnpm run build:all
+pnpm run clean
+pnpm run build
 
 # Run tests
 pnpm test                    # All runtimes (Node + browsers + Bun)

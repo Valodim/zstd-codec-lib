@@ -20,14 +20,10 @@ const SRC_DIR = join(PKG_DIR, 'src');
 const ESM_DIR = join(SRC_DIR, '_esm');
 const TYPES_DIR = join(SRC_DIR, '_types');
 const BUILD_DIR = join(PKG_DIR, 'build');
-const WASM_SOURCE_PATH = join(BUILD_DIR, 'zstd.wasm');
+const WASM_PATH = join(BUILD_DIR, 'zstd.wasm');
 const WASM_PERF_PATH = join(BUILD_DIR, 'zstd-perf.wasm');
-const WASM_SMALL_PATH = join(BUILD_DIR, 'zstd-small.wasm');
-const WASM_SMALL_PERF_PATH = join(BUILD_DIR, 'zstd-small-perf.wasm');
-const WASM_CODEC_PATH = join(BUILD_DIR, 'zstd-codec.wasm');
-const WASM_CODEC_PERF_PATH = join(BUILD_DIR, 'zstd-codec-perf.wasm');
-const WASM_CODEC_LVL1_PATH = join(BUILD_DIR, 'zstd-codec-lvl1.wasm');
-const WASM_CODEC_LVL1_PERF_PATH = join(BUILD_DIR, 'zstd-codec-lvl1-perf.wasm');
+const WASM_LVL1_PATH = join(BUILD_DIR, 'zstd-lvl1.wasm');
+const WASM_LVL1_PERF_PATH = join(BUILD_DIR, 'zstd-lvl1-perf.wasm');
 const ROOT_DIR = join(PKG_DIR, '..', '..');
 const LICENSE_PATH = join(ROOT_DIR, 'LICENSE');
 const README_PATH = join(ROOT_DIR, 'README.md');
@@ -39,14 +35,10 @@ const PREP = process.argv.includes('--prep');
 });
 
 for (const p of [
-  WASM_SOURCE_PATH,
+  WASM_PATH,
   WASM_PERF_PATH,
-  WASM_SMALL_PATH,
-  WASM_SMALL_PERF_PATH,
-  WASM_CODEC_PATH,
-  WASM_CODEC_PERF_PATH,
-  WASM_CODEC_LVL1_PATH,
-  WASM_CODEC_LVL1_PERF_PATH,
+  WASM_LVL1_PATH,
+  WASM_LVL1_PERF_PATH,
 ]) {
   if (!existsSync(p)) {
     console.error('WASM file not found at:', p);
@@ -54,14 +46,10 @@ for (const p of [
   }
 }
 
-console.log(`WASM size-optimized: ${(Bun.file(WASM_SOURCE_PATH).size).toLocaleString()} bytes`);
-console.log(`WASM perf-optimized: ${(Bun.file(WASM_PERF_PATH).size).toLocaleString()} bytes`);
-console.log(`WASM small size-optimized: ${(Bun.file(WASM_SMALL_PATH).size).toLocaleString()} bytes`);
-console.log(`WASM small perf-optimized: ${(Bun.file(WASM_SMALL_PERF_PATH).size).toLocaleString()} bytes`);
-console.log(`Codec size-optimized: ${(Bun.file(WASM_CODEC_PATH).size).toLocaleString()} bytes`);
-console.log(`Codec perf-optimized: ${(Bun.file(WASM_CODEC_PERF_PATH).size).toLocaleString()} bytes`);
-console.log(`Codec lvl1 size-optimized: ${(Bun.file(WASM_CODEC_LVL1_PATH).size).toLocaleString()} bytes`);
-console.log(`Codec lvl1 perf-optimized: ${(Bun.file(WASM_CODEC_LVL1_PERF_PATH).size).toLocaleString()} bytes\n`);
+console.log(`WASM size-optimized:      ${(Bun.file(WASM_PATH).size).toLocaleString()} bytes`);
+console.log(`WASM perf-optimized:      ${(Bun.file(WASM_PERF_PATH).size).toLocaleString()} bytes`);
+console.log(`WASM lvl1 size-optimized: ${(Bun.file(WASM_LVL1_PATH).size).toLocaleString()} bytes`);
+console.log(`WASM lvl1 perf-optimized: ${(Bun.file(WASM_LVL1_PERF_PATH).size).toLocaleString()} bytes\n`);
 
 const terserOptions = {
   ecma: 2020 as const,
@@ -135,16 +123,9 @@ const configs: Array<{
   external?: string[];
 }> = [
   {
-    name: 'Web ESM',
-    entry: join(SRC_DIR, 'index.web.ts'),
-    outfile: 'index.web.js',
-    target: 'browser',
-    minify: true,
-  },
-  {
     name: 'Web ESM (minified)',
     entry: join(SRC_DIR, 'index.web.ts'),
-    outfile: 'index.web.min.js',
+    outfile: 'index.web.js',
     target: 'browser',
     minify: true,
   },
@@ -156,58 +137,30 @@ const configs: Array<{
     minify: true,
   },
   {
-    name: 'Web Small ESM',
-    entry: join(SRC_DIR, 'index.web.small.ts'),
-    outfile: 'index.web.small.js',
+    name: 'Lvl1 Web ESM (minified)',
+    entry: join(SRC_DIR, 'index.lvl1.web.ts'),
+    outfile: 'index.lvl1.web.js',
     target: 'browser',
     minify: true,
   },
   {
-    name: 'Node.js Small ESM',
-    entry: join(SRC_DIR, 'index.node.small.ts'),
-    outfile: 'index.node.small.js',
-    target: 'node',
-    minify: true,
-  },
-  {
-    name: 'Codec Web ESM (minified)',
-    entry: join(SRC_DIR, 'index.codec.web.ts'),
-    outfile: 'index.codec.web.js',
-    target: 'browser',
-    minify: true,
-  },
-  {
-    name: 'Codec Node.js ESM',
-    entry: join(SRC_DIR, 'index.codec.node.ts'),
-    outfile: 'index.codec.node.js',
-    target: 'node',
-    minify: true,
-  },
-  {
-    name: 'Codec lvl1 Web ESM (minified)',
-    entry: join(SRC_DIR, 'index.codec.lvl1.web.ts'),
-    outfile: 'index.codec.lvl1.web.js',
-    target: 'browser',
-    minify: true,
-  },
-  {
-    name: 'Codec lvl1 Node.js ESM',
-    entry: join(SRC_DIR, 'index.codec.lvl1.node.ts'),
-    outfile: 'index.codec.lvl1.node.js',
+    name: 'Lvl1 Node.js ESM',
+    entry: join(SRC_DIR, 'index.lvl1.node.ts'),
+    outfile: 'index.lvl1.node.js',
     target: 'node',
     minify: true,
   },
   {
     name: 'Core Library',
-    entry: join(SRC_DIR, 'zstd-wasm.ts'),
-    outfile: 'zstd-wasm.js',
+    entry: join(SRC_DIR, 'zstd-wasm-decoder.ts'),
+    outfile: 'zstd-wasm-decoder.js',
     target: 'browser',
     minify: true,
   },
   {
     name: 'Core Library (minified)',
-    entry: join(SRC_DIR, 'zstd-wasm.ts'),
-    outfile: 'zstd-wasm.min.js',
+    entry: join(SRC_DIR, 'zstd-wasm-decoder.ts'),
+    outfile: 'zstd-wasm-decoder.min.js',
     target: 'browser',
     minify: true,
   },
@@ -290,34 +243,22 @@ function compressWithZopfli(inputPath: string, iterations: number): Buffer {
   }
 }
 
-const wasmBase64 = compressWithZopfli(WASM_SOURCE_PATH, 2000).toString('base64');
-const wasmPerfBase64 = compressWithZopfli(WASM_PERF_PATH, 200).toString('base64');
-const wasmSmallBase64 = compressWithZopfli(WASM_SMALL_PATH, 2000).toString('base64');
-const wasmSmallPerfBase64 = compressWithZopfli(WASM_SMALL_PERF_PATH, 200).toString('base64');
-const wasmCodecBase64 = compressWithZopfli(WASM_CODEC_PATH, 200).toString('base64');
-const wasmCodecPerfBase64 = compressWithZopfli(WASM_CODEC_PERF_PATH, 100).toString('base64');
-const wasmCodecLvl1Base64 = compressWithZopfli(WASM_CODEC_LVL1_PATH, 200).toString('base64');
-const wasmCodecLvl1PerfBase64 = compressWithZopfli(WASM_CODEC_LVL1_PERF_PATH, 100).toString('base64');
+const wasmBase64 = compressWithZopfli(WASM_PATH, 200).toString('base64');
+const wasmPerfBase64 = compressWithZopfli(WASM_PERF_PATH, 100).toString('base64');
+const wasmLvl1Base64 = compressWithZopfli(WASM_LVL1_PATH, 200).toString('base64');
+const wasmLvl1PerfBase64 = compressWithZopfli(WASM_LVL1_PERF_PATH, 100).toString('base64');
 
 async function buildInlined(
-  flavor: 'decoder' | 'decoder-small' | 'codec' | 'codec-lvl1',
+  flavor: 'full' | 'lvl1',
   variant: 'size' | 'perf',
 ) {
   let base64: string;
   let entry: string;
   let stem: string;
-  if (flavor === 'codec-lvl1') {
-    base64 = variant === 'perf' ? wasmCodecLvl1PerfBase64 : wasmCodecLvl1Base64;
-    entry = 'index.codec.lvl1.web.inlined.ts';
-    stem = 'index.codec.lvl1.inlined';
-  } else if (flavor === 'codec') {
-    base64 = variant === 'perf' ? wasmCodecPerfBase64 : wasmCodecBase64;
-    entry = 'index.codec.web.inlined.ts';
-    stem = 'index.codec.inlined';
-  } else if (flavor === 'decoder-small') {
-    base64 = variant === 'perf' ? wasmSmallPerfBase64 : wasmSmallBase64;
-    entry = 'index.web.inlined.ts';
-    stem = 'index.small.inlined';
+  if (flavor === 'lvl1') {
+    base64 = variant === 'perf' ? wasmLvl1PerfBase64 : wasmLvl1Base64;
+    entry = 'index.lvl1.web.inlined.ts';
+    stem = 'index.lvl1.inlined';
   } else {
     base64 = variant === 'perf' ? wasmPerfBase64 : wasmBase64;
     entry = 'index.web.inlined.ts';
@@ -355,43 +296,29 @@ async function buildInlined(
   }
 }
 
-await buildInlined('decoder', 'size');
-await buildInlined('decoder', 'perf');
-await buildInlined('decoder-small', 'size');
-await buildInlined('decoder-small', 'perf');
-await buildInlined('codec', 'size');
-await buildInlined('codec', 'perf');
-await buildInlined('codec-lvl1', 'size');
-await buildInlined('codec-lvl1', 'perf');
+await buildInlined('full', 'size');
+await buildInlined('full', 'perf');
+await buildInlined('lvl1', 'size');
+await buildInlined('lvl1', 'perf');
 
 const webJs = readFileSync(join(ESM_DIR, 'index.web.js'), 'utf8');
-const webPerfJs = webJs.replace(/zstd-decoder\.wasm/g, 'zstd-decoder-perf.wasm');
-writeFileSync(join(ESM_DIR, 'index.web.perf.js'), webPerfJs);
+writeFileSync(
+  join(ESM_DIR, 'index.web.perf.js'),
+  webJs.replace(/zstd\.wasm/g, 'zstd-perf.wasm'),
+);
 console.log('Built: index.web.perf.js (via string replacement)');
 
-const webSmallJs = readFileSync(join(ESM_DIR, 'index.web.small.js'), 'utf8');
-const webSmallPerfJs = webSmallJs.replace(/zstd-decoder-small\.wasm/g, 'zstd-decoder-small-perf.wasm');
-writeFileSync(join(ESM_DIR, 'index.web.small.perf.js'), webSmallPerfJs);
-console.log('Built: index.web.small.perf.js (via string replacement)');
+const lvl1WebJs = readFileSync(join(ESM_DIR, 'index.lvl1.web.js'), 'utf8');
+writeFileSync(
+  join(ESM_DIR, 'index.lvl1.web.perf.js'),
+  lvl1WebJs.replace(/zstd-lvl1\.wasm/g, 'zstd-lvl1-perf.wasm'),
+);
+console.log('Built: index.lvl1.web.perf.js (via string replacement)');
 
-const codecWebJs = readFileSync(join(ESM_DIR, 'index.codec.web.js'), 'utf8');
-const codecWebPerfJs = codecWebJs.replace(/zstd-codec\.wasm/g, 'zstd-codec-perf.wasm');
-writeFileSync(join(ESM_DIR, 'index.codec.web.perf.js'), codecWebPerfJs);
-console.log('Built: index.codec.web.perf.js (via string replacement)');
-
-const codecLvl1WebJs = readFileSync(join(ESM_DIR, 'index.codec.lvl1.web.js'), 'utf8');
-const codecLvl1WebPerfJs = codecLvl1WebJs.replace(/zstd-codec-lvl1\.wasm/g, 'zstd-codec-lvl1-perf.wasm');
-writeFileSync(join(ESM_DIR, 'index.codec.lvl1.web.perf.js'), codecLvl1WebPerfJs);
-console.log('Built: index.codec.lvl1.web.perf.js (via string replacement)');
-
-copyFileSync(WASM_SOURCE_PATH, join(ESM_DIR, 'zstd-decoder.wasm'));
-copyFileSync(WASM_PERF_PATH, join(ESM_DIR, 'zstd-decoder-perf.wasm'));
-copyFileSync(WASM_SMALL_PATH, join(ESM_DIR, 'zstd-decoder-small.wasm'));
-copyFileSync(WASM_SMALL_PERF_PATH, join(ESM_DIR, 'zstd-decoder-small-perf.wasm'));
-copyFileSync(WASM_CODEC_PATH, join(ESM_DIR, 'zstd-codec.wasm'));
-copyFileSync(WASM_CODEC_PERF_PATH, join(ESM_DIR, 'zstd-codec-perf.wasm'));
-copyFileSync(WASM_CODEC_LVL1_PATH, join(ESM_DIR, 'zstd-codec-lvl1.wasm'));
-copyFileSync(WASM_CODEC_LVL1_PERF_PATH, join(ESM_DIR, 'zstd-codec-lvl1-perf.wasm'));
+copyFileSync(WASM_PATH, join(ESM_DIR, 'zstd.wasm'));
+copyFileSync(WASM_PERF_PATH, join(ESM_DIR, 'zstd-perf.wasm'));
+copyFileSync(WASM_LVL1_PATH, join(ESM_DIR, 'zstd-lvl1.wasm'));
+copyFileSync(WASM_LVL1_PERF_PATH, join(ESM_DIR, 'zstd-lvl1-perf.wasm'));
 try {
   execSync('tsc --project tsconfig.json', {
     cwd: PKG_DIR,

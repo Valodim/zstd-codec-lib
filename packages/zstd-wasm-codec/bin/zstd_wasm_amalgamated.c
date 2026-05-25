@@ -1,5 +1,5 @@
 /**
- * \file zstd_wasm_codec_full.c
+ * \file zstd_wasm_full.c
  * Codec variant: full decoder (identical to zstd_wasm_full.c) plus a
  * compressor restricted to levels 1-3 (strategies fast / dfast).
  *

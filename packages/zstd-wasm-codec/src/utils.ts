@@ -52,7 +52,7 @@ export const rzfh = /*! @__PURE__ */ (dat: Uint8Array): number | DZS => {
       u = wb + (wb >> 3) * (dat[5] & 7);
     }
     if (e > 10000000) throw new err('win 2 large');
-    return {d,u,e};
+    return { d, u, e };
   }
   throw new err('bad zstd dat');
 };

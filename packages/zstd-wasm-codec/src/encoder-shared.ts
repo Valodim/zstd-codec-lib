@@ -4,12 +4,12 @@
  * powers both decode and encode operations.
  */
 
-import ZstdEncoder from './zstd-wasm-codec.js';
+import ZstdEncoder from './zstd-wasm-encoder.js';
 import type { CodecOptions, EncoderOptions } from './types.js';
 import { err } from './utils.js';
 import { _internal } from './shared.js';
 
-export { default as ZstdEncoder } from './zstd-wasm-codec.js';
+export { default as ZstdEncoder } from './zstd-wasm-encoder.js';
 
 const _toUint8Array = (chunk: BufferSource): Uint8Array => {
   if (chunk instanceof Uint8Array) return chunk;

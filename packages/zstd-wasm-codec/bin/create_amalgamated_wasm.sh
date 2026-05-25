@@ -3,7 +3,7 @@
 # Amalgamate the codec source the same way create_amalgamated_wasm.sh
 # does for the decoder: freestanding.py preprocesses the vendor tree,
 # then combine.py inlines all #include "vendor/..." references in
-# zstd_wasm_codec_full.c into a single source file.
+# zstd_wasm_full.c into a single source file.
 
 set -e
 
@@ -36,8 +36,8 @@ python3 "$COMBINE_SCRIPT" \
   -r "$TEMP_LIB" \
   -r "$SCRIPT_DIR/include" \
   -x legacy/zstd_legacy.h \
-  -o zstd_wasm_codec_amalgamated.c \
-  zstd_wasm_codec_full.c
+  -o zstd_wasm_amalgamated.c \
+  zstd_wasm_full.c
 
 if [ $? -ne 0 ]; then
   echo "ERROR: Amalgamation failed"
@@ -47,5 +47,5 @@ fi
 
 rm -rf "$TEMP_LIB"
 
-echo "✓ Successfully created zstd_wasm_codec_amalgamated.c"
-ls -lh zstd_wasm_codec_amalgamated.c
+echo "✓ Successfully created zstd_wasm_amalgamated.c"
+ls -lh zstd_wasm_amalgamated.c

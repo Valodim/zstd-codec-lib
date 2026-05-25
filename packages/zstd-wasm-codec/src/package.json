@@ -1,0 +1,163 @@
+{
+  "name": "zstd-wasm-codec",
+  "version": "0.2.3",
+  "private": false,
+  "type": "module",
+  "description": "Tiny & performant Zstandard codec for WebAssembly",
+  "keywords": [
+    "zstd",
+    "wasm",
+    "compression",
+    "decompression",
+    "streaming",
+    "dictionary",
+    "CompressionStreams API",
+    "DecompressionStreams API"
+  ],
+  "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+  "bugs": "https://github.com/tadpole-labs/zstd-codec-lib/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tadpole-labs/zstd-codec-lib.git"
+  },
+  "main": "./_esm/index.node.js",
+  "types": "./_types/index.d.ts",
+  "typings": "./_types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./_types/index.web.inlined.d.ts",
+      "node": {
+        "types": "./_types/index.node.d.ts",
+        "import": "./_esm/index.node.js",
+        "default": "./_esm/index.node.js"
+      },
+      "browser": {
+        "types": "./_types/index.web.inlined.d.ts",
+        "import": "./_esm/index.inlined.js",
+        "default": "./_esm/index.inlined.js"
+      },
+      "development": "./_esm/index.inlined.js",
+      "import": "./_esm/index.inlined.js",
+      "default": "./_esm/index.node.js"
+    },
+    "./external": {
+      "types": "./_types/index.web.d.ts",
+      "development": "./_esm/index.inlined.js",
+      "import": "./_esm/index.web.js",
+      "default": "./_esm/index.web.js"
+    },
+    "./perf": {
+      "types": "./_types/index.web.inlined.d.ts",
+      "import": "./_esm/index.inlined.perf.js",
+      "default": "./_esm/index.inlined.perf.js"
+    },
+    "./perf/external": {
+      "types": "./_types/index.web.d.ts",
+      "import": "./_esm/index.web.perf.js",
+      "default": "./_esm/index.web.perf.js"
+    },
+    "./lvl1": {
+      "types": "./_types/index.lvl1.web.inlined.d.ts",
+      "node": {
+        "types": "./_types/index.lvl1.node.d.ts",
+        "import": "./_esm/index.lvl1.node.js",
+        "default": "./_esm/index.lvl1.node.js"
+      },
+      "browser": {
+        "types": "./_types/index.lvl1.web.inlined.d.ts",
+        "import": "./_esm/index.lvl1.inlined.js",
+        "default": "./_esm/index.lvl1.inlined.js"
+      },
+      "development": "./_esm/index.lvl1.inlined.js",
+      "import": "./_esm/index.lvl1.inlined.js",
+      "default": "./_esm/index.lvl1.node.js"
+    },
+    "./lvl1/external": {
+      "types": "./_types/index.lvl1.web.d.ts",
+      "development": "./_esm/index.lvl1.inlined.js",
+      "import": "./_esm/index.lvl1.web.js",
+      "default": "./_esm/index.lvl1.web.js"
+    },
+    "./lvl1/perf": {
+      "types": "./_types/index.lvl1.web.inlined.d.ts",
+      "import": "./_esm/index.lvl1.inlined.perf.js",
+      "default": "./_esm/index.lvl1.inlined.perf.js"
+    },
+    "./lvl1/perf/external": {
+      "types": "./_types/index.lvl1.web.d.ts",
+      "import": "./_esm/index.lvl1.web.perf.js",
+      "default": "./_esm/index.lvl1.web.perf.js"
+    },
+    "./wasm": "./_esm/zstd.wasm",
+    "./wasm-perf": "./_esm/zstd-perf.wasm",
+    "./lvl1/wasm": "./_esm/zstd-lvl1.wasm",
+    "./lvl1/wasm-perf": "./_esm/zstd-lvl1-perf.wasm",
+    "./types": {
+      "types": "./_types/index.d.ts",
+      "default": "./_types/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./_types/*"
+      ],
+      "external": [
+        "./_types/index.web.d.ts"
+      ],
+      "perf": [
+        "./_types/index.web.inlined.d.ts"
+      ],
+      "perf/external": [
+        "./_types/index.web.d.ts"
+      ],
+      "lvl1": [
+        "./_types/index.lvl1.web.inlined.d.ts"
+      ],
+      "lvl1/external": [
+        "./_types/index.lvl1.web.d.ts"
+      ],
+      "lvl1/perf": [
+        "./_types/index.lvl1.web.inlined.d.ts"
+      ],
+      "lvl1/perf/external": [
+        "./_types/index.lvl1.web.d.ts"
+      ],
+      "types": [
+        "./_types/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "*.ts",
+    "*.d.ts",
+    "_esm/**/*.js",
+    "_esm/**/*.wasm",
+    "_types/**/*.d.ts",
+    "_types/**/*.d.ts.map"
+  ],
+  "homepage": "https://github.com/tadpole-labs/zstd-codec-lib",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22",
+    "npm": ">=8"
+  },
+  "browserslist": [
+    ">0.3%",
+    "chrome >= 80",
+    "edge >= 80",
+    "firefox >= 113",
+    "safari >= 16.4",
+    "ios_saf >= 16.4",
+    "not dead",
+    "fully supports wasm-simd",
+    "fully supports wasm-bulk-memory",
+    "fully supports wasm-signext"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org",
+    "provenance": true
+  }
+}

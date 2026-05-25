@@ -6,7 +6,7 @@
 </head>
 <body>
   <script type="module">
-    import { ZstdDecoder, ZstdDecompressionStream } from 'http://localhost:42069/packages/zstd-wasm-decoder/src/_esm/index.web.js';
+    import { ZstdDecoder, ZstdDecompressionStream } from 'http://localhost:42069/packages/zstd-wasm-codec/src/_esm/index.web.js';
 
     
     async function loadDict(name) {
@@ -27,7 +27,7 @@
       bufferToHex(await crypto.subtle.digest('SHA-1', data));
 
     // Load and compile WASM module once
-    const wasmUrl = 'http://localhost:42069/packages/zstd-wasm-decoder/src/_esm/zstd-decoder.wasm';
+    const wasmUrl = 'http://localhost:42069/packages/zstd-wasm-codec/src/_esm/zstd.wasm';
     const wasmModule = await WebAssembly.compileStreaming(fetch(wasmUrl));
     
     // Load all dictionaries

@@ -1,8 +1,6 @@
 /**
- * Zstd WASM Decoder - Inlined WASM variant
- *
- * WASM is pre-compressed with deflate-raw compliant zopfli stream, encoded as base64,
- * then decompressed at runtime using DecompressionStreams API
+ * Codec lvl1-only — inlined WASM. Smaller bundle (~3 KB gzipped less)
+ * and 12 MB linear memory budget (vs. 32 MB for the full codec).
  */
 
 import { _internal } from './shared.js';
@@ -18,7 +16,17 @@ export {
   ZstdDecompressionStream,
 } from './shared.js';
 
-export type { DecoderOptions, StreamResult } from './types.js';
+// biome-ignore lint/performance/noBarrelFile: entrypoint module
+export {
+  compress,
+  compressSync,
+  createEncoder,
+  setupZstdCodec,
+  ZstdCompressionStream,
+  ZstdEncoder,
+} from './encoder-shared.js';
+
+export type { DecoderOptions, EncoderOptions, CodecOptions, StreamResult } from './types.js';
 
 _internal._loader = async () => {
   return await WebAssembly.compile(

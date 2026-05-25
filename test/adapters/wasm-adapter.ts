@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 
-import type { ZstdOptions } from '../../packages/zstd-wasm-decoder/src/types.js';
-import type { ZstdDecoder } from '../../packages/zstd-wasm-decoder/src/zstd-wasm.js';
+import type { ZstdOptions } from '../../packages/zstd-wasm-codec/src/types.js';
+import type { ZstdDecoder } from '../../packages/zstd-wasm-codec/src/zstd-wasm-decoder.js';
 import { slice } from '../lib/utils.js';
 
 // Dynamically select which build variant to test based on TEST_VARIANT env var
@@ -14,7 +14,7 @@ const variantMap: Record<string, string> = {
 
 const buildFile = variantMap[TEST_VARIANT] || 'index.node.js';
 const { createDecoder, decompressSync, ZstdDecompressionStream } = await import(
-  `../../packages/zstd-wasm-decoder/src/_esm/${buildFile}`
+  `../../packages/zstd-wasm-codec/src/_esm/${buildFile}`
 );
 
 export { ZstdDecompressionStream };

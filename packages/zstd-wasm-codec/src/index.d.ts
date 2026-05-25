@@ -1,4 +1,10 @@
-export type { BaseWasmExports, DecoderWasmExports } from './types.js';
+export type {
+  BaseWasmExports,
+  CodecWasmExports,
+  DecoderWasmExports,
+  EncoderOptions,
+  CodecOptions,
+} from './types.js';
 
 /**
  * Web Streams API transform for Zstandard decompression.
@@ -179,11 +185,62 @@ export declare class ZstdDecoder {
 
 export type { DecoderOptions, StreamResult, ZstdOptions };
 
+/**
+ * Web Streams API transform for Zstandard compression. Mirrors the
+ * built-in `CompressionStream` API shape.
+ */
+export declare class ZstdCompressionStream {
+  readonly readable: ReadableStream;
+  readonly writable: WritableStream;
+  constructor(options?: CodecOptions);
+}
+
+/**
+ * Compress a buffer using Zstandard.
+ * @param input - Uncompressed input.
+ * @param options - Optional compression options (level 1-3, dictionary).
+ */
+export declare function compress(
+  input: Uint8Array,
+  options?: CodecOptions,
+): Promise<Uint8Array>;
+
+/**
+ * Synchronously compress a buffer. Requires the codec to be initialized
+ * already (via {@link setupZstdCodec} or a prior {@link compress} call).
+ */
+export declare function compressSync(input: Uint8Array, options?: CodecOptions): Uint8Array;
+
+/**
+ * Pre-initialize the codec (loads the wasm module, primes the encoder
+ * pool). Optional — encoders are created lazily on first compress() call.
+ */
+export declare function setupZstdCodec(options?: CodecOptions): Promise<void>;
+
+/**
+ * Creates an encoder instance with an auto-loaded WASM module.
+ */
+export declare function createEncoder(options?: EncoderOptions): Promise<ZstdEncoder>;
+
+/**
+ * Low-level ZSTD encoder class. Supports compression levels 1-3.
+ */
+export declare class ZstdEncoder {
+  constructor(options?: EncoderOptions);
+  init(wasmModule?: WebAssembly.Module): Promise<ZstdEncoder>;
+  compressSync(data: Uint8Array, level?: number): Uint8Array;
+  _destroy(): void;
+}
+
 declare const _default: {
   createDecoder: typeof createDecoder;
+  createEncoder: typeof createEncoder;
+  compress: typeof compress;
+  compressSync: typeof compressSync;
   decompress: typeof decompress;
   decompressSync: typeof decompressSync;
   decompressStream: typeof decompressStream;
+  ZstdCompressionStream: typeof ZstdCompressionStream;
   ZstdDecompressionStream: typeof ZstdDecompressionStream;
 };
 

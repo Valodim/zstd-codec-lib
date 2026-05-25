@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { _internal } from './shared.js';
 
 // biome-ignore lint/performance/noBarrelFile: entrypoint module
@@ -20,11 +19,12 @@ export {
   setupZstdCodec,
   ZstdCompressionStream,
   ZstdEncoder,
-} from './codec-shared.js';
+} from './encoder-shared.js';
 
 export type { DecoderOptions, EncoderOptions, CodecOptions, StreamResult } from './types.js';
 
-_internal._loader = () => {
-  const wasmUrl = new URL('./zstd-codec-lvl1-perf.wasm', import.meta.url);
-  return new WebAssembly.Module(readFileSync(wasmUrl));
+_internal._loader = async (wasmPath?: string) => {
+  const wasmUrl = wasmPath || new URL('./zstd.wasm', import.meta.url).href;
+  const response = await fetch(wasmUrl);
+  return await WebAssembly.compileStreaming(response);
 };
