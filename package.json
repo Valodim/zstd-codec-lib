@@ -61,10 +61,12 @@
     "@types/node": "24.10.1",
     "esbuild": "0.27.1",
     "playwright": "1.57.0",
+    "snappyjs": "0.7.0",
     "terser": "5.44.1",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vitest": "4.0.15"
+    "vitest": "4.0.15",
+    "zstd-napi": "0.0.12"
   },
   "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause"
 }
