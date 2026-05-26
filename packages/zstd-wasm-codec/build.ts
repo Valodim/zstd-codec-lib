@@ -17,8 +17,9 @@ import { minify } from 'terser';
 
 const PKG_DIR = import.meta.dir;
 const SRC_DIR = join(PKG_DIR, 'src');
-const ESM_DIR = join(SRC_DIR, '_esm');
-const TYPES_DIR = join(SRC_DIR, '_types');
+const DIST_DIR = join(PKG_DIR, 'dist');
+const ESM_DIR = join(DIST_DIR, 'esm');
+const TYPES_DIR = join(DIST_DIR, 'types');
 const BUILD_DIR = join(PKG_DIR, 'build');
 const WASM_PATH = join(BUILD_DIR, 'zstd.wasm');
 const WASM_PERF_PATH = join(BUILD_DIR, 'zstd-perf.wasm');

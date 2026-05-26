@@ -18,7 +18,7 @@ pnpm run build
 pnpm run build:wasm
 pnpm run build:ts
 
-pnpm run clean                # rm build/, src/_esm, src/_types
+pnpm run clean                # rm build/, dist/
 
 # Tests: default runs Node + browsers (Playwright) + Bun
 pnpm test
@@ -54,4 +54,4 @@ The library is two layers stacked tightly together; understanding both at once i
 
 **Tests (`test/`).** `suite.test.ts` is the shared decoder suite, parameterized via env vars. `codec.test.ts` covers the encoder side and cross-decodes through the host `zstd` CLI. `TEST_ADAPTER` (`node` default, `browser-all`, `wasm`) and `TEST_VARIANT` (`web-inlined`, `web-inlined-perf`, …) pick which built artifact to exercise — that's why `test:release` re-runs with multiple variants. Adapters live in `test/adapters/`; browser tests boot a fixture server (`fixture-server.ts`) and load `test/bundles/test-harness.html` via Playwright. Coverage threshold and timeouts are in `test/vitest.config.ts` (long timeout because some streaming cases are large).
 
-**Generated outputs** under `src/_esm/`, `src/_types/`, and `src/*.wasm` are committed-derived artifacts of the build; don't edit them by hand. After changing C sources or `bin/include/`, you must `regenerate-amalgamated` (the Makefile does this automatically on the build targets).
+**Generated outputs** under `dist/esm/` (JS + `.wasm`) and `dist/types/` (`.d.ts`) are committed-derived artifacts of the build; don't edit them by hand. After changing C sources or `bin/include/`, you must `regenerate-amalgamated` (the Makefile does this automatically on the build targets).

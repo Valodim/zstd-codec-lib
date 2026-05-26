@@ -9,9 +9,8 @@
     "ignoreUnknown": false,
     "includes": [
       "**",
-      "!**/_esm",
-      "!**/_types",
       "!**/node_modules",
+      "!**/dist",
       "!**/build",
       "!**/vendor",
       "!**/*.wasm",

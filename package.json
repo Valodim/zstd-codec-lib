@@ -16,7 +16,6 @@
   },
   "packageManager": "pnpm@10.25.0",
   "scripts": {
-    "preinstall": "npx -y only-allow pnpm",
     "test": "pnpm run test:all-runtimes",
     "test:coverage": "vitest run --config test/vitest.config.ts --coverage test/suite.test.ts",
     "test:browsers": "TEST_ADAPTER=browser-all vitest run --config test/vitest.config.ts test/suite.test.ts",
@@ -30,7 +29,7 @@
     "build:wasm": "cd packages/zstd-wasm-codec && make",
     "build:ts": "cd packages/zstd-wasm-codec && bun build.ts",
     "build:ts:prep": "cd packages/zstd-wasm-codec && bun build.ts --prep",
-    "clean": "cd packages/zstd-wasm-codec && rm -rf build src/_esm src/_types",
+    "clean": "cd packages/zstd-wasm-codec && rm -rf build dist",
     "bench:setup": "bun test/benchmark/setup.ts",
     "bench": "bun test/benchmark/bench.ts",
     "bench:node": "tsx test/benchmark/bench.ts",

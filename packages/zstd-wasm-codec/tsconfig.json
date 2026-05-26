@@ -6,7 +6,7 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
-    "outDir": "./src/_types",
+    "outDir": "./dist/types",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
@@ -23,5 +23,5 @@
     "removeComments": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "build", "src/_*", "build.ts"]
+  "exclude": ["node_modules", "dist", "build", "build.ts"]
 }
