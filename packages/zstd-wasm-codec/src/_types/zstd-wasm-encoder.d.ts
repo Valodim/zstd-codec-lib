@@ -18,15 +18,15 @@ import type { EncoderOptions } from './types.js';
  * ║   0x40000  │   pb-reset point (262144)          │            ║
  * ║            ├────────────────────────────────────┤            ║
  * ║            │   ZSTD_CCtx + cwksp workspace      │            ║
- * ║            │   (~3-4 MB at level 3)             │            ║
+ * ║            │   (~1 MB at level 1)               │            ║
  * ║            ├────────────────────────────────────┤            ║
  * ║            │   Dictionary (optional)            │            ║
  * ║            ├────────────────────────────────────┤            ║
  * ║            │   Source buffer (compressing)      │            ║
  * ║            │   Destination buffer               │            ║
  * ║            │     For compress:    ~src + bound  │            ║
- * ║            │     For decompress:  9.4 MB        │            ║
- * ║   ~32 MB   └────────────────────────────────────┘            ║
+ * ║            │     For decompress:  up to ~9.4 MB │            ║
+ * ║   ~12 MB   └────────────────────────────────────┘            ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 declare const _CODEC_PB_RESET = 262144;

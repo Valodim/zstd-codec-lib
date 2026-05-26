@@ -1,18 +1,12 @@
 import type { DecoderOptions, StreamResult } from './types.js';
 /**
  * Linear memory layout (fixed, non-growable; sized in the Makefile linker
- * flags — see LDFLAGS_BASE / LDFLAGS_LVL1):
+ * flags — see LDFLAGS_BASE):
  *
  *   [stack | stream structs | rodata | CCtx workspace | DCtx (~96 KB) |
  *    ddict ptr (4b) | optional dict (≤ 2 MB) | src buf (2 MB) | dst buf ]
  *
- * Concrete sizes:
- *   - Full codec  (zstd.wasm / zstd-perf.wasm): 32 MB total, 64 KB stack.
- *   - Lvl1 codec  (zstd-lvl1.wasm / -perf):     12 MB total, 64 KB stack.
- *
- * The dst buffer is sized to hold level-19 decompression (8 MB window +
- * 3 * 128 KB blocks + ~1 MB margin ≈ 9.4 MB) for the full codec; the lvl1
- * decoder caps maxWindowSize at 2 MB so its working set is smaller and the
+ * Total 12 MB, 64 KB stack. The decoder caps maxWindowSize at 2 MB so the
  * dst buffer cap is clamped by _maxDstBuf at init time.
  *
  * Stream-struct location is queried at init via the wasm's `getInBufferPtr`

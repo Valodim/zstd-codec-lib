@@ -1,10 +1,10 @@
 ## zstd-wasm-codec
 
-Tiny & performant Zstandard codec for WebAssembly. Decoder + level 1-3 compressor in a single module.
+Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor in a single module.
 
 |          |                                                                                                                                                                                                                         |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Lightweight**      | 40kb / 52kb (zipped) for the size/perf-optimized full codec (decoder + level 1-3 compressor)<br>38kb / 48kb (zipped) for the lvl1-only codec build (12 MB linear memory, decoder capped to a 2 MB window, ~5kb smaller binary)                                                                                                                              |
+| **Lightweight**      | 38kb / 48kb (zipped) for the size/perf-optimized codec (12 MB linear memory, decoder capped to a 2 MB window)                                                                                                                              |
 | **Dictionary Support** | Multiple and up to 2MB each. Compression and decompression dictionaries both supported.                                                                                                                                  |
 | **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
 | **Compatibility**    | • [DecompressionStream API ponyfill](https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream) + matching `CompressionStream`-shaped class<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node ≥ 22, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/build.ts) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
@@ -14,7 +14,7 @@ Tiny & performant Zstandard codec for WebAssembly. Decoder + level 1-3 compresso
 #### Implementation notes:
 - Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-codec/bin/zstd_wasm_full.c), avoiding heap growth entirely. The buffer is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/packages/zstd-wasm-codec/src/zstd-wasm-decoder.ts) to handle the maximum memory required by level 19 compressed data.
 - For use in browsers, the module is asynchronously compiled & cached at page load.
-- Only the `fast` (lvl 1-2) and `dfast` (lvl 3) strategies are pulled from upstream — heavy strategies (`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported.
+- Only the `fast` (lvl 1) strategy is pulled from upstream — heavier strategies (`dfast`/`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported (passing `level: 2` or `3` silently clamps to fast strategy).
 
 ## Decompression
 ```typescript
@@ -85,12 +85,12 @@ import { ... } from 'zstd-wasm-codec/perf';       // perf-optimized variant
 
 ```typescript
 // 1. Simple compress / decompress round-trip
-const compressed: Uint8Array = await compress(input, { level: 3 });
+const compressed: Uint8Array = await compress(input, { level: 1 });
 const decoded:    Uint8Array = await decompress(compressed);
 
 // 2. Streaming via WHATWG TransformStreams
 const compStream: ReadableStream<Uint8Array> = blob.stream()
-  .pipeThrough(new ZstdCompressionStream({ level: 3 }));
+  .pipeThrough(new ZstdCompressionStream({ level: 1 }));
 
 // Mirrors CompressionStream API — pipe directly into a fetch(), file write, etc.
 await fetch('/upload', { method: 'POST', body: compStream });
@@ -98,47 +98,21 @@ await fetch('/upload', { method: 'POST', body: compStream });
 // 3. With a compression dictionary
 const enc = await createEncoder({
   dictionary: await (await fetch('/dict.bin')).arrayBuffer(),
-  level: 3,
+  level: 1,
 });
 const out = enc.compressSync(input);
 
 // 4. Pre-warm + use sync compressSync afterwards (avoids the await on hot paths)
 import { compressSync } from 'zstd-wasm-codec';
-await setupZstdCodec({ level: 3 });
-const out2: Uint8Array = compressSync(input, { level: 3 });
+await setupZstdCodec({ level: 1 });
+const out2: Uint8Array = compressSync(input, { level: 1 });
 ```
 
 ### Compression caveats
-- **Levels 1, 2, 3 only** — higher levels are intentionally excluded to keep the binary small. The compression ratio is competitive with `zstd -3` (the host CLI default), but if you need maximum ratio you'll need a different library.
-- The codec uses a fixed ~32 MB linear memory (or 12 MB for the `/lvl1` variant). Allocation happens up front; the wasm doesn't grow at runtime.
+- **Level 1 only** — only the `fast` strategy is included to keep the binary small. Passing `level: 2` or `level: 3` does not error: upstream auto-clamps to the `fast` strategy, so you get level-1-equivalent output. If you need maximum ratio you'll need a different library.
+- The codec uses a fixed 12 MB linear memory. Allocation happens up front; the wasm doesn't grow at runtime.
+- The compressor emits level-1 frames (512 KB window); the decoder accepts foreign frames up to level 9 (4 MB window). Frames declaring a larger window — e.g. level-19 output from the `zstd` CLI — are refused with `frameParameter_windowTooLarge`.
 - Output frames are spec-compliant — round-tripping through the upstream `zstd` CLI is verified by CI.
-
-### Smaller variant: `zstd-wasm-codec/lvl1`
-
-If you only need level-1 compression and want the smallest possible footprint, import from `/lvl1`. This drops the `dfast` strategy entirely (used by level 3 in the full build) and shrinks the linear-memory budget to 12 MB:
-
-```typescript
-import {
-  compress, decompress, ZstdCompressionStream, ZstdDecompressionStream,
-} from 'zstd-wasm-codec/lvl1';                    // Default
-import { ... } from 'zstd-wasm-codec/lvl1/external';     // Same-origin .wasm
-import { ... } from 'zstd-wasm-codec/lvl1/perf';         // Perf-optimized
-```
-
-Trade-offs vs the full codec:
-
-|                       | default (lvl 1-3)          | `/lvl1`                                      |
-|-----------------------|----------------------------|----------------------------------------------|
-| Gzipped (size build)  | 40 KB                      | **38 KB**                                    |
-| Gzipped (perf build)  | 52 KB                      | **48 KB**                                    |
-| Linear memory         | 32 MB                      | **12 MB**                                    |
-| Compression strategy  | fast + dfast               | fast only                                    |
-| Compression ratio     | best                       | ~10-15% larger output on text                |
-| Decoder window cap    | up to 8 MB (level 19)      | **2 MB (level 9)** — larger frames rejected with `frameParameter_windowTooLarge` |
-
-The asymmetry between the (level-1) compressor and the (up-to-level-9) decoder is intentional: this build only ever emits level-1 frames (512 KB window), but can still decode frames produced by other zstd tools up to level 9. Frames declaring a larger window — e.g. level-19 output from the `zstd` CLI — are refused.
-
-Passing `level: 2` or `level: 3` to a lvl1 build does not error — upstream auto-clamps to the `fast` strategy, so you get level-1-equivalent output. If you depend on the actual level-3 ratio, use the default entrypoint.
 
 ### Important Considerations
 - The default export is pre-minified and mangled. All builds tested against the full suite.

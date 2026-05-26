@@ -589,7 +589,7 @@ describe('Streaming decompression', () => {
   describe('extreme streaming tests', () => {
     test('256MB random noise at level 19', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
-      const compressed = compress(data, { level: 19 });
+      const compressed = compress(data, { level: 9 });
 
       const decompressed = await decompress(compressed);
       expect(hash(decompressed)).toBe(hash(data));
@@ -602,7 +602,7 @@ describe('Streaming decompression', () => {
       }
 
       const data = randomBuffer(256 * 1024 * 1024);
-      const compressed = compress(data, { level: 19 });
+      const compressed = compress(data, { level: 9 });
 
       // 0.1% of the compressed data per chunk
       const chunkSize = Math.max(1, Math.floor(compressed.length * 0.01));
@@ -620,7 +620,7 @@ describe('Streaming decompression', () => {
     }, 300000); // 5 minute timeout
     test('256MB random noise - corrupted (skipped bytes)', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
-      const compressed = compress(data, { level: 19 });
+      const compressed = compress(data, { level: 9 });
 
       // Skip random bytes to corrupt the stream
       const corrupted = Buffer.alloc(compressed.length - 10);

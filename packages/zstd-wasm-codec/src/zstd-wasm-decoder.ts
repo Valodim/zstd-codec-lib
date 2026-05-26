@@ -2,18 +2,12 @@ import type { CodecWasmExports, DecoderOptions, StreamResult } from './types.js'
 import { _fss, err, _concatUint8Arrays } from './utils.js';
 /**
  * Linear memory layout (fixed, non-growable; sized in the Makefile linker
- * flags — see LDFLAGS_BASE / LDFLAGS_LVL1):
+ * flags — see LDFLAGS_BASE):
  *
  *   [stack | stream structs | rodata | CCtx workspace | DCtx (~96 KB) |
  *    ddict ptr (4b) | optional dict (≤ 2 MB) | src buf (2 MB) | dst buf ]
  *
- * Concrete sizes:
- *   - Full codec  (zstd.wasm / zstd-perf.wasm): 32 MB total, 64 KB stack.
- *   - Lvl1 codec  (zstd-lvl1.wasm / -perf):     12 MB total, 64 KB stack.
- *
- * The dst buffer is sized to hold level-19 decompression (8 MB window +
- * 3 * 128 KB blocks + ~1 MB margin ≈ 9.4 MB) for the full codec; the lvl1
- * decoder caps maxWindowSize at 2 MB so its working set is smaller and the
+ * Total 12 MB, 64 KB stack. The decoder caps maxWindowSize at 2 MB so the
  * dst buffer cap is clamped by _maxDstBuf at init time.
  *
  * Stream-struct location is queried at init via the wasm's `getInBufferPtr`
@@ -38,8 +32,8 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
 
 export const _MAX_SRC_BUF = 2 * 1024 * 1024; // 2 MB input buffer
 // Default sync-decompression cap for the level-19 layout (8MB window +
-// 3*128KB blocks + ~1MB margin). The lvl1 build derives a tighter cap
-// from the actual linear-memory size at init time.
+// 3*128KB blocks + ~1MB margin). The actual cap is clamped to fit the
+// linear-memory budget at init time.
 const _MAX_DST_BUF_DEFAULT = 9830464; // 9.37 MB
 // Margin between end of dst sync buffer and end of linear memory; leaves
 // room for the streaming inBuff/outBuff that ZSTD_decompressStream may
@@ -113,8 +107,8 @@ class ZstdDecoder {
     this._srcPtr = this._exports.malloc(_MAX_SRC_BUF);
     this._dstPtr = this._srcPtr + _MAX_SRC_BUF; // We don't malloc dst buf. Its where dst buf starts. Zstd will malloc
     // Cap the sync-decompression buffer at whatever the linear memory
-    // can actually hold (the lvl1 codec build ships with 12 MB and a
-    // larger CCtx workspace, so the 9.4 MB default may need clamping).
+    // can actually hold (12 MB total minus CCtx workspace + src buf,
+    // so the 9.4 MB default may need clamping).
     this._maxDstBuf = Math.min(
       _MAX_DST_BUF_DEFAULT,
       this._HEAPU8.byteLength - this._dstPtr - _DST_BUF_TAIL_MARGIN,
