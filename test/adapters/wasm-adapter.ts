@@ -1,20 +1,20 @@
 import { Buffer } from 'node:buffer';
 
-import type { ZstdOptions } from '../../packages/zstd-wasm-codec/src/types.js';
-import type { ZstdDecoder } from '../../packages/zstd-wasm-codec/src/zstd-wasm-decoder.js';
+import type { ZstdOptions } from '../../src/types.js';
+import type { ZstdDecoder } from '../../src/zstd-wasm-decoder.js';
 import { slice } from '../lib/utils.js';
 
 // Dynamically select which build variant to test based on TEST_VARIANT env var
 const TEST_VARIANT = process.env.TEST_VARIANT || 'node';
 const variantMap: Record<string, string> = {
-  node: 'index.node.js',
-  'web-inlined': 'index.inlined.js',
-  'web-inlined-perf': 'index.inlined.perf.js',
+  node: 'index.node',
+  'web-inlined': 'index.inlined',
+  'web-inlined-perf': 'index.inlined.perf',
 };
 
-const buildFile = variantMap[TEST_VARIANT] || 'index.node.js';
+const buildFile = variantMap[TEST_VARIANT] || 'index.node';
 const { createDecoder, decompressSync, ZstdDecompressionStream } = await import(
-  `../../packages/zstd-wasm-codec/src/_esm/${buildFile}`
+  `../../dist/esm/${buildFile}.js`
 );
 
 export { ZstdDecompressionStream };

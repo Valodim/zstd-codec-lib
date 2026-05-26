@@ -5,7 +5,7 @@ import {
   decompress as wasmDecompress,
   decompressStream as wasmDecompressStream,
   ZstdDecompressionStream,
-} from '../../packages/zstd-wasm-codec/src/_esm/index.node.js';
+} from '../../dist/esm/index.node.js';
 import { loadCompressedFiles } from './util.js';
 
 const dir = join(import.meta.dirname || process.cwd(), 'compressed');

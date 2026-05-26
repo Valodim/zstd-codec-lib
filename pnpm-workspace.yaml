@@ -1,8 +1,0 @@
-minimumReleaseAge: 1080
-packages:
-  - packages/zstd-wasm-decoder/src
-  - '!**/test/**'
-
-dedupeInjectedDeps: false
-onlyBuiltDependencies:
-  - esbuild

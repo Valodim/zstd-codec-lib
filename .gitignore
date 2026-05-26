@@ -5,9 +5,11 @@ node_modules
 *.tgz
 *.js.map
 *.d.ts.map
-/packages/zstd-wasm-codec/build
-/packages/zstd-wasm-codec/src/README.md
-/packages/zstd-wasm-codec/src/LICENSE
+/build
+/src/README.md
+/src/LICENSE
+.yarn/
+.pnp.*
 /tests/benchmark/compressed/*.zst
 /tests/benchmark/compressed/*.json
 /tests/data/*.json

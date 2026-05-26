@@ -164,7 +164,6 @@ export LLVM_DIR=/usr
 
 3. **Verify toolchain:**
 ```bash
-cd packages/zstd-wasm-codec
 make check-tools
 ```
 
@@ -172,21 +171,21 @@ make check-tools
 
 ```bash
 # Full build (WASM + TypeScript)
-pnpm run build
+yarn build
 
 # Clean build
-pnpm run clean
-pnpm run build
+yarn clean
+yarn build
 
 # Run tests
-pnpm test                    # All runtimes (Node + browsers + Bun)
-pnpm run test:node           # Node.js only — includes the codec suite
-pnpm run test:codec          # Codec round-trip + cross-decode tests only
-pnpm run test:browsers       # Browser tests only
-pnpm run test:bun            # Bun only
+yarn test                    # All runtimes (Node + browsers + Bun)
+yarn test:node               # Node.js only — includes the codec suite
+yarn test:codec              # Codec round-trip + cross-decode tests only
+yarn test:browsers           # Browser tests only
+yarn test:bun                # Bun only
 
 # Run benchmarks
-pnpm run bench:full
+yarn bench:full
 ```
 
 ## License

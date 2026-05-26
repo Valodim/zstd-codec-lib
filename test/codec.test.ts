@@ -16,7 +16,7 @@ import {
   ZstdCompressionStream,
   ZstdDecompressionStream,
   setupZstdCodec,
-} from '../packages/zstd-wasm-codec/src/_esm/index.node.js';
+} from '../dist/esm/index.node.js';
 
 const LEVELS = [1, 2, 3] as const;
 
@@ -73,7 +73,7 @@ describe('ZstdEncoder direct API', () => {
   for (const level of LEVELS) {
     test(`compressSync @ level ${level}`, async () => {
       const src = txt(200);
-      const enc = await (await import('../packages/zstd-wasm-codec/src/_esm/index.node.js'))
+      const enc = await (await import('../dist/esm/index.node.js'))
         .createEncoder({ level });
       const out = enc.compressSync(src);
       expect(out.length).toBeLessThan(src.length / 2);

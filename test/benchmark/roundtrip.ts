@@ -7,7 +7,7 @@ import {
   decompressSync,
   ZstdDecoder,
   ZstdDecompressionStream,
-} from '../../packages/zstd-wasm-codec/src/_esm/index.node.js';
+} from '../../dist/esm/index.node.js';
 import { hash } from '../lib/utils.js';
 
 const dir = import.meta.dirname || process.cwd();
@@ -86,7 +86,7 @@ validate(await readStream(compressedNoDict), 'ZstdDecompressionStream (no dict)'
 
 const wasmModule = new WebAssembly.Module(
   readFileSync(
-    new URL('../../packages/zstd-wasm-codec/src/_esm/zstd-perf.wasm', import.meta.url),
+    new URL('../../dist/esm/zstd-perf.wasm', import.meta.url),
   ),
 );
 

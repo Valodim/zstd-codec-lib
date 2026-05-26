@@ -8,7 +8,7 @@ export default defineConfig({
     includeSource: ['./**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['../packages/**/*.ts'],
+      include: ['../src/**/*.ts'],
       exclude: ['**/*.d.ts', '**/node_modules/**'],
     },
   },

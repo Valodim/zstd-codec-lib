@@ -1,57 +1,141 @@
 {
-  "name": "zstd-codec-lib",
-  "version": "0.0.0",
-  "private": true,
+  "name": "zstd-wasm-codec",
+  "version": "0.2.3",
+  "private": false,
   "type": "module",
-  "workspaces": [
-    "packages/*"
+  "description": "Tiny & performant Zstandard codec for WebAssembly",
+  "keywords": [
+    "zstd",
+    "wasm",
+    "compression",
+    "decompression",
+    "streaming",
+    "dictionary",
+    "CompressionStreams API",
+    "DecompressionStreams API"
   ],
-  "engines": {
-    "node": ">=22",
-    "pnpm": ">=10"
-  },
+  "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+  "bugs": "https://github.com/tadpole-labs/zstd-codec-lib/issues",
+  "homepage": "https://github.com/tadpole-labs/zstd-codec-lib",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tadpole-labs/zstd-codec-lib.git"
   },
-  "packageManager": "pnpm@10.25.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/esm/index.node.js",
+  "types": "./dist/types/index.d.ts",
+  "typings": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.web.inlined.d.ts",
+      "node": {
+        "types": "./dist/types/index.node.d.ts",
+        "import": "./dist/esm/index.node.js",
+        "default": "./dist/esm/index.node.js"
+      },
+      "browser": {
+        "types": "./dist/types/index.web.inlined.d.ts",
+        "import": "./dist/esm/index.inlined.js",
+        "default": "./dist/esm/index.inlined.js"
+      },
+      "development": "./dist/esm/index.inlined.js",
+      "import": "./dist/esm/index.inlined.js",
+      "default": "./dist/esm/index.node.js"
+    },
+    "./external": {
+      "types": "./dist/types/index.web.d.ts",
+      "development": "./dist/esm/index.inlined.js",
+      "import": "./dist/esm/index.web.js",
+      "default": "./dist/esm/index.web.js"
+    },
+    "./perf": {
+      "types": "./dist/types/index.web.inlined.d.ts",
+      "import": "./dist/esm/index.inlined.perf.js",
+      "default": "./dist/esm/index.inlined.perf.js"
+    },
+    "./perf/external": {
+      "types": "./dist/types/index.web.d.ts",
+      "import": "./dist/esm/index.web.perf.js",
+      "default": "./dist/esm/index.web.perf.js"
+    },
+    "./wasm": "./dist/esm/zstd.wasm",
+    "./wasm-perf": "./dist/esm/zstd-perf.wasm",
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/types/*"
+      ],
+      "external": [
+        "./dist/types/index.web.d.ts"
+      ],
+      "perf": [
+        "./dist/types/index.web.inlined.d.ts"
+      ],
+      "perf/external": [
+        "./dist/types/index.web.d.ts"
+      ],
+      "types": [
+        "./dist/types/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "src/*.ts",
+    "src/*.d.ts",
+    "dist/esm/**/*.js",
+    "dist/esm/**/*.wasm",
+    "dist/types/**/*.d.ts",
+    "dist/types/**/*.d.ts.map"
+  ],
+  "sideEffects": false,
+  "browserslist": [
+    ">0.3%",
+    "chrome >= 80",
+    "edge >= 80",
+    "firefox >= 113",
+    "safari >= 16.4",
+    "ios_saf >= 16.4",
+    "not dead",
+    "fully supports wasm-simd",
+    "fully supports wasm-bulk-memory",
+    "fully supports wasm-signext"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org",
+    "provenance": true
+  },
   "scripts": {
-    "test": "pnpm run test:all-runtimes",
+    "build": "yarn build:wasm && yarn build:ts",
+    "build:wasm": "make",
+    "build:ts": "bun build.ts",
+    "build:ts:prep": "bun build.ts --prep",
+    "clean": "rm -rf build dist",
+    "test": "yarn test:all-runtimes",
     "test:coverage": "vitest run --config test/vitest.config.ts --coverage test/suite.test.ts",
     "test:browsers": "TEST_ADAPTER=browser-all vitest run --config test/vitest.config.ts test/suite.test.ts",
     "test:node": "node --version && vitest run --config test/vitest.config.ts test/suite.test.ts test/codec.test.ts",
     "test:codec": "node --version && vitest run --config test/vitest.config.ts test/codec.test.ts",
     "test:bun": "bun --version && bun vitest run --config test/vitest.config.ts test/suite.test.ts",
-    "test:all-runtimes": "pnpm run test:node && pnpm run test:browsers && pnpm run test:bun",
+    "test:all-runtimes": "yarn test:node && yarn test:browsers && yarn test:bun",
     "test:release": "vitest run --config test/vitest.config.ts test/suite.test.ts && bun vitest run --config test/vitest.config.ts test/suite.test.ts",
     "test:release:browsers": "TEST_ADAPTER=browser-all TEST_VARIANT=web-inlined vitest run --config test/vitest.config.ts test/suite.test.ts && TEST_ADAPTER=browser-all TEST_VARIANT=web-inlined-perf vitest run --config test/vitest.config.ts test/suite.test.ts",
-    "build": "pnpm run build:wasm && pnpm run build:ts",
-    "build:wasm": "cd packages/zstd-wasm-codec && make",
-    "build:ts": "cd packages/zstd-wasm-codec && bun build.ts",
-    "build:ts:prep": "cd packages/zstd-wasm-codec && bun build.ts --prep",
-    "clean": "cd packages/zstd-wasm-codec && rm -rf build dist",
     "bench:setup": "bun test/benchmark/setup.ts",
     "bench": "bun test/benchmark/bench.ts",
     "bench:node": "tsx test/benchmark/bench.ts",
-    "bench:full": "pnpm run bench:setup && pnpm run bench",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --write .",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
-    "check": "biome check .",
-    "check:fix": "biome check --write .",
-    "ci:install": "pnpm install --frozen-lockfile --ignore-scripts",
+    "bench:full": "yarn bench:setup && yarn bench",
+    "ci:install": "yarn install --immutable",
     "ci:postinstall:browsers": "playwright install --with-deps chromium firefox webkit"
   },
-  "pnpm": {
-    "peerDependencyRules": {
-      "ignoreMissing": [
-        "@types/react"
-      ]
-    }
-  },
   "devDependencies": {
-    "@biomejs/biome": "2.3.8",
     "@playwright/test": "1.57.0",
     "@types/bun": "1.3.4",
     "@types/node": "24.10.1",
@@ -61,8 +145,6 @@
     "terser": "5.44.1",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vitest": "4.0.15",
-    "zstd-napi": "0.0.12"
-  },
-  "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause"
+    "vitest": "4.0.15"
+  }
 }

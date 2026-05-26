@@ -7,7 +7,7 @@
  */
 
 import { type Browser, chromium, firefox, type Page, webkit } from 'playwright';
-import type { StreamResult, ZstdOptions } from '../../packages/zstd-wasm-codec/src/types.js';
+import type { StreamResult, ZstdOptions } from '../../src/types.js';
 
 interface BrowserAdapterOptions {
   browser: 'chromium' | 'firefox' | 'webkit';
