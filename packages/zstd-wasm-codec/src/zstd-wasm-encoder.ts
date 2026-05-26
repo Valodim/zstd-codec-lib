@@ -96,7 +96,7 @@ class ZstdEncoder {
       const len = this._dictionary.length;
       const dictPtr = this._exports.malloc(len);
       this._HEAPU8.set(this._dictionary, dictPtr);
-      const r = this._exports.cD(dictPtr, len);
+      const r = this._exports.loadEncoderDict(dictPtr, len);
       if (r < 0) throw new err(`dict load err ${r >>> 0}`);
     }
 
@@ -125,8 +125,8 @@ class ZstdEncoder {
     // For sync compress we don't need to pb() since we already pre-allocated.
     this._HEAPU8.set(input, this._srcPtr);
     const lvl = level ?? this._level;
-    const r = this._exports.cs(this._dstPtr, this._dstCap, this._srcPtr, srcSize, lvl);
-    if (r < 0) throw new err(`cs err ${r >>> 0}`);
+    const r = this._exports.compress(this._dstPtr, this._dstCap, this._srcPtr, srcSize, lvl);
+    if (r < 0) throw new err(`compress err ${r >>> 0}`);
     return this._HEAPU8.slice(this._dstPtr, this._dstPtr + r);
   }
 
@@ -149,8 +149,8 @@ class ZstdEncoder {
 
     const lvl = level ?? this._level;
     if (reset) {
-      const r = this._exports.ic(lvl);
-      if (r < 0) throw new err(`ic err ${r >>> 0}`);
+      const r = this._exports.initCompressor(lvl);
+      if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
     }
 
     const inLen = input.length;
@@ -179,8 +179,8 @@ class ZstdEncoder {
       this._writeStreamStruct(this._inStructPtr, this._srcPtr, take, 0);
 
       while (this._readStreamPos(this._inStructPtr) < take) {
-        const r = this._exports.cS(0); // ZSTD_e_continue
-        if (r < 0) throw new err(`cS err ${r >>> 0}`);
+        const r = this._exports.compressStreamStep(0); // ZSTD_e_continue
+        if (r < 0) throw new err(`compressStreamStep err ${r >>> 0}`);
         if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
           flushOut();
         }
@@ -192,8 +192,8 @@ class ZstdEncoder {
     let r: number;
     do {
       this._writeStreamStruct(this._inStructPtr, this._srcPtr, 0, 0);
-      r = this._exports.cS(2); // ZSTD_e_end
-      if (r < 0) throw new err(`cS end err ${r >>> 0}`);
+      r = this._exports.compressStreamStep(2); // ZSTD_e_end
+      if (r < 0) throw new err(`compressStreamStep end err ${r >>> 0}`);
       if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
         flushOut();
       }
@@ -232,8 +232,8 @@ class ZstdEncoder {
       this._HEAPU8.set(input.subarray(inOff, inOff + take), this._srcPtr);
       this._writeStreamStruct(this._inStructPtr, this._srcPtr, take, 0);
       while (this._readStreamPos(this._inStructPtr) < take) {
-        const r = this._exports.cS(0);
-        if (r < 0) throw new err(`cS err ${r >>> 0}`);
+        const r = this._exports.compressStreamStep(0);
+        if (r < 0) throw new err(`compressStreamStep err ${r >>> 0}`);
         if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
           flushOut();
         }
@@ -245,8 +245,8 @@ class ZstdEncoder {
       let r: number;
       do {
         this._writeStreamStruct(this._inStructPtr, this._srcPtr, 0, 0);
-        r = this._exports.cS(2);
-        if (r < 0) throw new err(`cS end err ${r >>> 0}`);
+        r = this._exports.compressStreamStep(2);
+        if (r < 0) throw new err(`compressStreamStep end err ${r >>> 0}`);
         if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
           flushOut();
         }
@@ -259,8 +259,8 @@ class ZstdEncoder {
 
   /** Reset for a fresh frame; keeps the loaded dictionary. */
   reset(level?: number): void {
-    const r = this._exports.ic(level ?? this._level);
-    if (r < 0) throw new err(`ic err ${r >>> 0}`);
+    const r = this._exports.initCompressor(level ?? this._level);
+    if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
   }
 
   _destroy(): void {

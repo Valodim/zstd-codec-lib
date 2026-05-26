@@ -108,7 +108,7 @@ class ZstdDecoder {
       }
       const dictPtr = this._exports.malloc(_dictLen);
       this._HEAPU8.set(this._dictionary as Uint8Array, dictPtr);
-      this._exports.cd(dictPtr, _dictLen);
+      this._exports.loadDecoderDict(dictPtr, _dictLen);
     }
     this._srcPtr = this._exports.malloc(_MAX_SRC_BUF);
     this._dstPtr = this._srcPtr + _MAX_SRC_BUF; // We don't malloc dst buf. Its where dst buf starts. Zstd will malloc
@@ -148,9 +148,9 @@ class ZstdDecoder {
     }
 
     const _dstPtr = this._dstPtr;
-    this._exports.pb(_dstPtr);
+    this._exports.setHeapEnd(_dstPtr);
     this._HEAPU8.set(compressedData as Uint8Array, this._srcPtr);
-    const result = this._exports.dS(_dstPtr, this._maxDstBuf, this._srcPtr, srcSize);
+    const result = this._exports.decompress(_dstPtr, this._maxDstBuf, this._srcPtr, srcSize);
 
     if (result < 0) {
       throw new err(`dec err ${result}`);
@@ -187,8 +187,8 @@ class ZstdDecoder {
 
     // Reset stream state for new decompression - ZSTD_reset_session_only = 1
     if (reset) {
-      this._exports.re();
-      this._exports.pb(this._dstPtr);
+      this._exports.resetDecoder();
+      this._exports.setHeapEnd(this._dstPtr);
     }
     const inLen = input.length || 0;
     if (inLen == 0) return _STREAM_RESULT;
@@ -218,7 +218,7 @@ class ZstdDecoder {
 
       // Process all data in current block
       while (this._readStreamPos(this._streamInputStructPtr) < toProcess) {
-        const result = this._exports.ds();
+        const result = this._exports.decompressStreamStep();
         if (result < 0) throw new err(`dec err ${result}`);
 
         const outputPos = this._readStreamPos(this._streamOutputStructPtr);

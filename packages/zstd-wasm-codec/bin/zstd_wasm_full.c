@@ -8,15 +8,14 @@
  * static dispatch table entries to NULL so --gc-sections + LTO drop their
  * code paths entirely.
  *
- * Decoder exports: pb / cd / ds / re / dS.
+ * Decoder exports: setHeapEnd / loadDecoderDict / decompressStreamStep /
+ *                  resetDecoder / decompress.
  *
  * New compression exports:
- *   - ic(level)            init/reset CCtx for a given level (1-3)
- *   - cD(dict, dictSize)   load compression dictionary
- *   - cs(dst,dCap,src,sSz) single-shot compress (uses the level last set
- *                          via ic, default 3)
- *   - cS()                 streaming compress step (mirrors decoder ds)
- *   - ce()                 finish/flush streaming compression
+ *   - initCompressor(level)            init/reset CCtx for a given level (1-3)
+ *   - loadEncoderDict(dict, dictSize)  load compression dictionary
+ *   - compress(dst,dCap,src,sSz,level) single-shot compress
+ *   - compressStreamStep(endOp)        streaming compress step (mirrors decoder)
  */
 
 
@@ -132,7 +131,7 @@ size_t get_heap_cursor(void) {
 }
 
 WASM_EXPORT
-void pb(size_t new_size) {
+void setHeapEnd(size_t new_size) {
     __asm__(
         "local.get %0\n"
         "global.set __heap_cursor\n"
@@ -158,7 +157,7 @@ void* memmove(void* dest, const void* src, size_t n) { return __builtin_memmove(
 static ZSTD_CCtx* cctx;
 
 WASM_EXPORT
-void re(void) {
+void resetDecoder(void) {
     dctx->streamStage = zdss_init;
     dctx->noForwardProgress = 0;
     dctx->isFrameDecompression = 1;
@@ -175,7 +174,7 @@ void _initialize(void) {
     dctx->maxWindowSize = ZSTD_WASM_MAX_WINDOW_SIZE;
     /* Bump above all static data — the codec build adds compress-side
      * rodata (default cparams, code tables, etc) so 256KB is safe. */
-    pb(262144);
+    setHeapEnd(262144);
 
     /* Encoder side: create CCtx and force the (level-3) workspace to
      * be allocated *now*, before JS starts malloc-ing src/dst buffers.
@@ -215,7 +214,7 @@ static const void* cdict_buf;
 static size_t cdict_size;
 
 WASM_EXPORT
-void cd(const void* dict, size_t dictSize) {
+void loadDecoderDict(const void* dict, size_t dictSize) {
     ddict = (ZSTD_DDict*) malloc(sizeof(ZSTD_DDict));
     ddict->dictContent = dict;
     ddict->dictSize = dictSize;
@@ -286,12 +285,12 @@ static size_t dm(void* dst, size_t dstCapacity, const void* src, size_t srcSize)
 }
 
 WASM_EXPORT
-size_t dS(void* dst, size_t dstCapacity, const void* src, size_t srcSize) {
+size_t decompress(void* dst, size_t dstCapacity, const void* src, size_t srcSize) {
     return dm(dst, dstCapacity, src, srcSize);
 }
 
 WASM_EXPORT
-size_t ds(void) {
+size_t decompressStreamStep(void) {
     const char* const src = (const char*)in_buffer->src;
     const char* const istart = src + in_buffer->pos;
     const char* const iend = src + in_buffer->size;
@@ -494,11 +493,12 @@ size_t ds(void) {
  */
 
 /* Reset CCtx for a fresh frame at the given compression level (1-3).
- * If a dictionary was stashed via cD(), load it into the cctx so streaming
- * compress (cS / ZSTD_compressStream2) honors it too — session_only reset
- * drops the loaded dict, so we re-load on every frame. */
+ * If a dictionary was stashed via loadEncoderDict(), load it into the cctx
+ * so streaming compress (compressStreamStep / ZSTD_compressStream2) honors
+ * it too — session_only reset drops the loaded dict, so we re-load on every
+ * frame. */
 WASM_EXPORT
-size_t ic(int level) {
+size_t initCompressor(int level) {
     size_t const r1 = ZSTD_CCtx_reset(cctx, ZSTD_reset_session_only);
     if (ZSTD_isError(r1)) return r1;
     size_t const r2 = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
@@ -512,18 +512,18 @@ size_t ic(int level) {
 /* Stash a compression dictionary. We don't load it into the cctx here;
  * see the comment on cdict_buf above. */
 WASM_EXPORT
-size_t cD(const void* dict, size_t dictSize) {
+size_t loadEncoderDict(const void* dict, size_t dictSize) {
     cdict_buf = dict;
     cdict_size = dictSize;
     return 0;
 }
 
 /* Single-shot compress. Uses ZSTD_compress_usingDict so a dictionary
- * stashed via cD() is honored — and so the existing workspace allocated
- * at _initialize time is sufficient (the advanced compress2 path needs
- * a larger workspace that wouldn't fit our fixed-memory layout). */
+ * stashed via loadEncoderDict() is honored — and so the existing workspace
+ * allocated at _initialize time is sufficient (the advanced compress2 path
+ * needs a larger workspace that wouldn't fit our fixed-memory layout). */
 WASM_EXPORT
-size_t cs(void* dst, size_t dstCapacity,
+size_t compress(void* dst, size_t dstCapacity,
           const void* src, size_t srcSize,
           int level) {
     if (cdict_buf) {
@@ -537,6 +537,6 @@ size_t cs(void* dst, size_t dstCapacity,
 /* Streaming compress step. JS sets up in_buffer/out_buffer and calls this
  * repeatedly with endOp (0 = continue, 1 = flush, 2 = end-of-frame). */
 WASM_EXPORT
-size_t cS(int endOp) {
+size_t compressStreamStep(int endOp) {
     return ZSTD_compressStream2(cctx, out_buffer, in_buffer, (ZSTD_EndDirective)endOp);
 }

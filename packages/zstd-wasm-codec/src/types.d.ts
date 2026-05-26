@@ -7,8 +7,8 @@ export interface BaseWasmExports {
 
   /** Allocate memory in the WASM module */
   malloc(size: number): number;
-  /** Prune the buffer to a new size */
-  pb(new_size: number): void;
+  /** Prune the buffer to a new size (set heap break). */
+  setHeapEnd(new_size: number): void;
 }
 
 /*
@@ -18,17 +18,17 @@ export interface DecoderWasmExports extends BaseWasmExports {
   /** Creates a ZSTD decompression context */
   _initialize(): void;
 
-  /** Creates a ZSTD dictionary for decompression */
-  cd(dictPtr: number, dictSize: number): number;
+  /** Load a ZSTD dictionary for decompression */
+  loadDecoderDict(dictPtr: number, dictSize: number): number;
 
   /** Decompresses data synchronously */
-  dS(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number): number;
+  decompress(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number): number;
 
   /** Decompresses a stream of data */
-  ds(): number;
+  decompressStreamStep(): number;
 
   /** Resets the decompression context */
-  re(): number;
+  resetDecoder(): number;
 }
 
 /*
@@ -39,16 +39,16 @@ export interface CodecWasmExports extends DecoderWasmExports {
   getInBufferPtr(): number;
 
   /** Reset compression context for a fresh frame at level 1-3. */
-  ic(level: number): number;
+  initCompressor(level: number): number;
 
   /** Load a compression dictionary. */
-  cD(dictPtr: number, dictSize: number): number;
+  loadEncoderDict(dictPtr: number, dictSize: number): number;
 
   /** Single-shot compress at a given level. */
-  cs(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number, level: number): number;
+  compress(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number, level: number): number;
 
   /** Streaming compress step. endOp: 0=continue 1=flush 2=end-of-frame. */
-  cS(endOp: number): number;
+  compressStreamStep(endOp: number): number;
 }
 
 /**
