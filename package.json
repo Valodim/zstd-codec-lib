@@ -136,11 +136,11 @@
     "ci:postinstall:browsers": "playwright install --with-deps chromium firefox webkit"
   },
   "devDependencies": {
-    "@playwright/test": "1.57.0",
+    "@playwright/test": "1.52.0",
     "@types/bun": "1.3.4",
     "@types/node": "24.10.1",
     "esbuild": "0.27.1",
-    "playwright": "1.57.0",
+    "playwright": "1.52.0",
     "snappyjs": "0.7.0",
     "terser": "5.44.1",
     "tsx": "4.21.0",
