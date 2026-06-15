@@ -172,7 +172,6 @@ export class ZstdDecompressionStream {
     let decoder: ZstdDecoder;
     let idx: number = -1;
     let dictId: number = 0;
-    let isFirstChunk = true;
     // A temporary buffer to hold data until the header can be read.
     const initialBuffer: Uint8Array[] = [];
     let headerInfo: DZS = { d: 0, u: 0, e: -1 };
@@ -212,25 +211,32 @@ export class ZstdDecompressionStream {
         }
         if (bytesRead < minRecvSize || headerInfo.e == -1) return;
 
-        // After header probing, start streaming/decoding.
+        // After header probing, start streaming/decoding. Once the decoder
+        // exists, each subsequent chunk is fed incrementally.
         if (decoder) {
           const result = decoder.decompressStream(data, false).buf;
           if (result.length > 0) {
+            bytesWritten += result.length;
             controller.enqueue(result);
           }
           return;
         }
 
         try {
-          if (isFirstChunk) {
-            dictId = _getDictId(data);
-            [decoder, idx, dictId] = await _acquireDecoder(dictId, options);
-          }
+          // First decode after the buffering threshold: feed EVERYTHING
+          // buffered so far (header + all earlier chunks), not just the chunk
+          // that crossed the threshold. The earlier chunks were held in
+          // initialBuffer and were never handed to the decoder — feeding only
+          // the latest one drops the prefix and corrupts the stream.
+          const buffered = _concatUint8Arrays(initialBuffer, bytesRead);
+          dictId = _getDictId(buffered);
+          [decoder, idx, dictId] = await _acquireDecoder(dictId, options);
 
-          const result = decoder!.decompressStream(data, isFirstChunk).buf;
-          bytesWritten += result.length;
-          controller.enqueue(result);
-          isFirstChunk = false;
+          const result = decoder.decompressStream(buffered, true).buf;
+          if (result.length > 0) {
+            bytesWritten += result.length;
+            controller.enqueue(result);
+          }
         } catch (er) {
           controller.error(new err(`dec err ${er}`));
         }
