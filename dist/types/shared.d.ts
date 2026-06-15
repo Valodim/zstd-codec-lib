@@ -7,14 +7,11 @@ export declare const _internal: {
         maxSrcSize: number;
         maxDstSize: number;
     };
-    dictionaries: string[];
 };
 export declare const setupZstdDecoder: (options: {
     maxSrcSize?: number;
     maxDstSize?: number;
-    dictionaries?: string[];
 }) => Promise<void>;
-export declare function _pushToPool(decoder: ZstdDecoder, module: WebAssembly.Module, dictId?: number): void;
 export declare const createDecoder: (options?: ZstdOptions) => Promise<ZstdDecoder>;
 export declare class ZstdDecompressionStream {
     /**
@@ -33,6 +30,6 @@ export declare class ZstdDecompressionStream {
     constructor(options?: ZstdOptions);
 }
 export declare const decompress: (input: Uint8Array, options?: ZstdOptions) => Promise<Uint8Array>;
-export declare const decompressStream: (input: Uint8Array, reset?: boolean, options?: ZstdOptions) => Promise<StreamResult>;
-export declare const decompressSync: (input: Uint8Array, expectedSize?: number, options?: ZstdOptions) => Uint8Array;
+export declare const decompressStream: (input: Uint8Array, reset?: boolean, _options?: ZstdOptions) => Promise<StreamResult>;
+export declare const decompressSync: (input: Uint8Array, expectedSize?: number, _options?: ZstdOptions) => Uint8Array;
 //# sourceMappingURL=shared.d.ts.map

@@ -20,8 +20,6 @@ import type { EncoderOptions } from './types.js';
  * ║            │   ZSTD_CCtx + cwksp workspace      │            ║
  * ║            │   (~1 MB at level 1)               │            ║
  * ║            ├────────────────────────────────────┤            ║
- * ║            │   Dictionary (optional)            │            ║
- * ║            ├────────────────────────────────────┤            ║
  * ║            │   Source buffer (compressing)      │            ║
  * ║            │   Destination buffer               │            ║
  * ║            │     For compress:    ~src + bound  │            ║
@@ -34,7 +32,6 @@ declare class ZstdEncoder {
     private _exports;
     private _HEAPU8;
     private _HEAPU32;
-    private readonly _dictionary?;
     private readonly _level;
     private readonly _maxSrcSize;
     /** Address of the (in_buffer, out_buffer) struct pair within wasm memory. */
@@ -69,7 +66,7 @@ declare class ZstdEncoder {
      * available so far. Caller is responsible for sequencing reset/end.
      */
     compressStreamChunk(input: Uint8Array, endOfStream: boolean): Uint8Array;
-    /** Reset for a fresh frame; keeps the loaded dictionary. */
+    /** Reset for a fresh frame. */
     reset(level?: number): void;
     _destroy(): void;
 }
