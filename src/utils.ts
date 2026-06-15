@@ -8,15 +8,18 @@
 export const err = Error;
 export interface DZS {
   d: number; // dictionary ID
-  u: number; // uncompressed size
-  e: number; // window size
+  u: number; // window size
+  e: number; // uncompressed (content) size; 0 when not declared in the header
 }
 
 export const rb = /*! @__PURE__ */ (d: Uint8Array, b: number, n: number) => {
   let i = 0,
     o = 0;
   for (; i < n; ++i) o |= d[b++] << (i << 3);
-  return o;
+  // Force unsigned: a 4-byte field whose top bit is set (e.g. reading the
+  // magic, or a >2 GB size / high dictionary ID) would otherwise come back
+  // negative and break downstream size comparisons.
+  return o >>> 0;
 };
 
 export const _fss = (dat: Uint8Array): number => {
@@ -24,8 +27,11 @@ export const _fss = (dat: Uint8Array): number => {
   const ss = (flg >> 5) & 1,
     df = flg & 3,
     fcf = flg >> 6;
-  // @ts-expect-error
-  return rb(dat, 6 - ss + df == 3 ? 4 : df, fcf ? 1 << fcf : ss) + (fcf == 1 && 256);
+  // Frame_Content_Size sits after the (optional) Window_Descriptor and the
+  // Dictionary_ID field: offset = (6 - singleSegment) + dictIdBytes.
+  // (Mind JS precedence — this MUST be parenthesised, see rzfh below.)
+  const off = 6 - ss + (df == 3 ? 4 : df);
+  return rb(dat, off, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
 };
 
 // Read Zstandard frame header
@@ -51,7 +57,10 @@ export const rzfh = /*! @__PURE__ */ (dat: Uint8Array): number | DZS => {
       const wb = 1 << (10 + (dat[5] >> 3));
       u = wb + (wb >> 3) * (dat[5] & 7);
     }
-    if (e > 10000000) throw new err('win 2 large');
+    // Guard the *window* size (u), not the content size (e): large payloads
+    // are normal and must still decode (future-proof up to level 9 → 4 MB
+    // window). The decoder enforces its own hard window cap on top of this.
+    if (u > 10000000) throw new err('win 2 large');
     return { d, u, e };
   }
   throw new err('bad zstd dat');

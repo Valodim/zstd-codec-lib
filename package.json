@@ -122,7 +122,7 @@
     "test": "yarn test:all-runtimes",
     "test:coverage": "vitest run --config test/vitest.config.ts --coverage test/suite.test.ts",
     "test:browsers": "TEST_ADAPTER=browser-all vitest run --config test/vitest.config.ts test/suite.test.ts",
-    "test:node": "node --version && vitest run --config test/vitest.config.ts test/suite.test.ts test/codec.test.ts",
+    "test:node": "node --version && vitest run --config test/vitest.config.ts test/suite.test.ts test/codec.test.ts test/large-compressible.test.ts",
     "test:codec": "node --version && vitest run --config test/vitest.config.ts test/codec.test.ts",
     "test:bun": "bun --version && bun vitest run --config test/vitest.config.ts test/suite.test.ts",
     "test:all-runtimes": "yarn test:node && yarn test:browsers && yarn test:bun",

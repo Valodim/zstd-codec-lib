@@ -201,7 +201,12 @@ export class ZstdDecompressionStream {
             headerBuffer.set(initialBuffer[i], offset);
             offset += initialBuffer[i].length;
           }
-          headerInfo = rzfh(headerBuffer) as DZS;
+          try {
+            headerInfo = rzfh(headerBuffer) as DZS;
+          } catch (er) {
+            controller.error(new err(`dec err ${er}`));
+            return;
+          }
           // Adapt minimum receive size depending on header
           minRecvSize = Math.max(minRecvSize, headerInfo.e, headerInfo.u >> 4, 1 << 17);
         }
