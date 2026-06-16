@@ -119,3 +119,191 @@ describe('rzfh window guard caps at 4 MB + 1', () => {
     expect(() => rzfh(frameHeader(wd(13, 0)))).toThrow('win 2 large'); // 8388608
   });
 });
+
+/**
+ * Formerly large-compressible.test.ts — decoding LARGE, highly-compressible
+ * frames (>10 MB decompressed, <2 MB compressed). suite.test.ts's random-data
+ * streaming tests never hit this regime (compressed size ~= input size), masking
+ * a size-hint misparse and a content-size-vs-window confusion in the stream.
+ */
+describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
+  const SIZE = 12 * 1024 * 1024; // 12 MB decompressed — comfortably over 10 MB
+  let data: Buffer;
+  let compressed: Buffer;
+
+  // Deterministic, highly-compressible payload: repeating tokens, squashed to a
+  // few hundred KB. Compressed one-shot, which declares Frame_Content_Size.
+  function makeCompressible(size: number): Buffer {
+    const buf = Buffer.alloc(size);
+    const tokens = ['the quick brown fox ', 'lorem ipsum dolor ', '{"k":1,"v":', '0000000000', 'ABCDEF'];
+    let off = 0;
+    let i = 0;
+    while (off < size) {
+      const t = tokens[i++ % tokens.length];
+      const n = Math.min(t.length, size - off);
+      buf.write(t.slice(0, n), off, 'latin1');
+      off += n;
+    }
+    return buf;
+  }
+
+  beforeAll(async () => {
+    const { createDecoder } = await import('../dist/esm/index.node.js');
+    await createDecoder(); // warm the cached wasm module so decompressSync works
+    data = makeCompressible(SIZE);
+    compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
+    expect(data.length).toBeGreaterThan(10 * 1024 * 1024);
+    expect(compressed.length).toBeLessThan(2 * 1024 * 1024);
+  });
+
+  test('decompress() roundtrips', async () => {
+    const { decompress } = await import('../dist/esm/index.node.js');
+    expect(hash(Buffer.from(await decompress(compressed)))).toBe(hash(data));
+  });
+
+  test('decompressSync() roundtrips', async () => {
+    const { decompressSync } = await import('../dist/esm/index.node.js');
+    expect(hash(Buffer.from(decompressSync(compressed)))).toBe(hash(data));
+  });
+
+  test('ZstdDecompressionStream roundtrips', async () => {
+    const { ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
+    const stream = new ZstdDecompressionStream();
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    void writer.write(compressed);
+    void writer.close();
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    expect(hash(Buffer.concat(chunks))).toBe(hash(data));
+  });
+});
+
+/**
+ * Formerly streaming-chunked.test.ts — ZstdDecompressionStream fed in small
+ * chunks. When the buffering threshold is crossed after more than one chunk was
+ * buffered, the decoder must receive ALL buffered bytes, not just the latest
+ * chunk (else the prefix is dropped and the stream corrupts). Shows up only when
+ * the frame exceeds minRecvSize (~256 KB) AND arrives in smaller pieces.
+ */
+describe('ZstdDecompressionStream chunked input', () => {
+  const SIZE = 1024 * 1024; // 1 MB → compressed comfortably over the 256 KB threshold
+  let data: Buffer;
+  let declaredFrame: Buffer;
+  let unknownFrame: Buffer;
+
+  // Deterministic, incompressible payload (compressed size ~= input size).
+  function makeIncompressible(size: number): Buffer {
+    const out = Buffer.alloc(size);
+    let seed = createHash('sha256').update('streaming-chunked-seed').digest();
+    for (let off = 0; off < size; off += 32) {
+      seed = createHash('sha256').update(seed).digest();
+      seed.copy(out, off, 0, Math.min(32, size - off));
+    }
+    return out;
+  }
+
+  // Streaming compression — emits a frame with UNKNOWN content size.
+  async function streamingCompress(buf: Buffer): Promise<Buffer> {
+    const z = zlib.createZstdCompress();
+    const out: Buffer[] = [];
+    z.on('data', (d: Buffer) => out.push(d));
+    const done = new Promise<void>((res) => z.on('end', () => res()));
+    z.end(buf);
+    await done;
+    return Buffer.concat(out);
+  }
+
+  async function streamDecompressChunked(comp: Buffer, chunkSize: number): Promise<Buffer> {
+    const { ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
+    const stream = new ZstdDecompressionStream();
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    (async () => {
+      for (let i = 0; i < comp.length; i += chunkSize) {
+        await writer.write(comp.subarray(i, i + chunkSize));
+      }
+      await writer.close();
+    })();
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  beforeAll(async () => {
+    const { createDecoder } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+    data = makeIncompressible(SIZE);
+    declaredFrame = Buffer.from(zlib.zstdCompressSync(data, {})); // declares content size
+    unknownFrame = await streamingCompress(data); // unknown content size
+    expect(declaredFrame.length).toBeGreaterThan(256 * 1024);
+    expect(unknownFrame.length).toBeGreaterThan(256 * 1024);
+  });
+
+  for (const chunkSize of [16 * 1024, 64 * 1024]) {
+    test(`declared content size, ${chunkSize / 1024}KB chunks`, async () => {
+      expect(hash(await streamDecompressChunked(declaredFrame, chunkSize))).toBe(hash(data));
+    });
+    test(`unknown content size, ${chunkSize / 1024}KB chunks`, async () => {
+      expect(hash(await streamDecompressChunked(unknownFrame, chunkSize))).toBe(hash(data));
+    });
+  }
+});
+
+/**
+ * Formerly malloc-bounds.test.ts — the wasm bump allocator over fixed,
+ * non-growable memory must refuse any request that would run past the end of
+ * memory by returning NULL (0). The cursor is driven to the boundary via
+ * setHeapEnd to exercise the guard directly.
+ */
+describe('malloc bounds guard', () => {
+  interface CodecExports {
+    memory: WebAssembly.Memory;
+    _initialize(): void;
+    malloc(size: number): number;
+    setHeapEnd(cursor: number): void;
+  }
+
+  function instantiate(variant: string): CodecExports {
+    const bytes = readFileSync(join(__dirname, '../dist/esm', variant));
+    const inst = new WebAssembly.Instance(new WebAssembly.Module(bytes), { env: {} });
+    const ex = inst.exports as unknown as CodecExports;
+    ex._initialize();
+    return ex;
+  }
+
+  for (const variant of ['zstd.wasm', 'zstd-perf.wasm']) {
+    test(`${variant}: refuses over-budget allocations with NULL instead of trapping`, () => {
+      const ex = instantiate(variant);
+      const memBytes = ex.memory.buffer.byteLength;
+
+      const p = ex.malloc(1024);
+      expect(p).toBeGreaterThan(0);
+      expect(p + 1024).toBeLessThanOrEqual(memBytes);
+
+      ex.setHeapEnd(memBytes - 64);
+      expect(ex.malloc(64)).toBe(memBytes - 64); // exactly fills the tail
+      expect(ex.malloc(1)).toBe(0); // heap full → NULL
+
+      ex.setHeapEnd(memBytes - 64);
+      expect(ex.malloc(65)).toBe(0); // larger than free tail → NULL
+
+      // Pathological sizes rejected without integer-overflow wraparound.
+      ex.setHeapEnd(1024);
+      expect(ex.malloc(0xffffffff)).toBe(0);
+      expect(ex.malloc(memBytes)).toBe(0);
+
+      // Rejected calls must not have advanced the cursor.
+      ex.setHeapEnd(1024);
+      expect(ex.malloc(2048)).toBe(1024);
+    });
+  }
+});
