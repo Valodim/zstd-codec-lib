@@ -39433,34 +39433,29 @@ void _initialize(void) {
      * rodata (default cparams, code tables, etc) so 256KB is safe. */
     setHeapEnd(262144);
 
-    /* Encoder side: create CCtx and force the (level-3) workspace to
-     * be allocated *now*, before JS starts malloc-ing src/dst buffers.
-     * Otherwise the workspace would be allocated lazily on the first
-     * cs()/cS() call and collide with JS-managed memory.
+    /* Encoder side: create the CCtx and commit its cwksp workspace *now*,
+     * before JS starts malloc-ing src/dst buffers, so the workspace sits at
+     * a fixed low address and subsequent JS-side malloc()s land past it.
      *
-     * A throwaway single-shot compression is the simplest way to drive
-     * all of cwksp's internal allocations to completion.
-     */
-    /* Create CCtx + drive a real compression upfront so the cwksp
-     * workspace gets fully allocated through our bump allocator.
-     * After this returns, all compress-side memory is committed and
-     * subsequent JS-side malloc()s will land safely past it. */
-    cctx = ZSTD_createCCtx();
-    {
-        size_t const dstCap = 64;
-        unsigned char* const dummy_src = (unsigned char*)malloc(8);
-        unsigned char* const dummy_dst = (unsigned char*)malloc(dstCap);
-        for (int i = 0; i < 8; i++) dummy_src[i] = (unsigned char)i;
-        /* Workspace is sized for the maximum level we'll ever compress at.
-         * The default codec build supports levels 1-3 (3 → dfast strategy,
-         * windowLog=21). The lvl1-only build defines this to 1, which
-         * uses fast strategy + windowLog=19 and roughly halves the
-         * workspace footprint. */
+     * ZSTD_compressBegin() is the right primitive: it sizes the workspace
+     * from the level's cParams with pledgedSrcSize=ZSTD_CONTENTSIZE_UNKNOWN,
+     * so the full windowLog-19 (level-1) workspace is committed regardless
+     * of any input size. A throwaway ZSTD_compressCCtx(..., src, 8, ...) does
+     * NOT work here: ZSTD_adjustCParams downsizes windowLog to the 8-byte
+     * input (~windowLog 6), committing a tiny workspace that the first real
+     * compression then has to grow — defeating the point.
+     *
+     * Only the non-buffered (single-shot) workspace is committed here; the
+     * streaming path (compressStreamStep / ZSTD_compressStream2) adds its
+     * input/output staging buffers lazily on first use. Either way the bump
+     * allocator is bounds-checked, so an over-budget (dictionary + maxSrcSize)
+     * configuration surfaces as a catchable ZSTD memory_allocation error
+     * rather than an out-of-bounds write. */
 #ifndef ZSTD_WASM_INIT_LEVEL
 #define ZSTD_WASM_INIT_LEVEL 3
 #endif
-        ZSTD_compressCCtx(cctx, dummy_dst, dstCap, dummy_src, 8, ZSTD_WASM_INIT_LEVEL);
-    }
+    cctx = ZSTD_createCCtx();
+    ZSTD_compressBegin(cctx, ZSTD_WASM_INIT_LEVEL);
 }
 
 /* Compression dictionary, set by cD(). The single-shot path (cs) routes
@@ -39515,6 +39510,20 @@ static size_t dm(void* dst, size_t dstCapacity, const void* src, size_t srcSize)
                 srcSize -= skippableSize;
                 continue;
             }
+        }
+
+        /* Enforce the window cap on the single-shot path too. Upstream
+         * ZSTD_decompressFrame only rejects windowLog > ZSTD_WINDOWLOG_MAX
+         * (~1 GB); without this an over-cap foreign frame (e.g. a >4 MB
+         * window, or a single-segment frame whose contentSize exceeds the
+         * cap) would decode here even though decompressStreamStep refuses
+         * it. fhErr==0 means a complete header was parsed; a partial/short
+         * header (fhErr>0) is left to ZSTD_decompressFrame to surface. */
+        {   ZSTD_FrameHeader zfh;
+            size_t const fhErr = ZSTD_getFrameHeader_advanced(&zfh, src, srcSize, dctx->format);
+            if (ZSTD_isError(fhErr)) return fhErr;
+            RETURN_ERROR_IF(fhErr == 0 && zfh.windowSize > dctx->maxWindowSize,
+                            frameParameter_windowTooLarge, "");
         }
 
         if (ddict) {

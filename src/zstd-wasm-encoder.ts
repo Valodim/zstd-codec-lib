@@ -101,6 +101,10 @@ class ZstdEncoder {
     if (this._dictionary) {
       const len = this._dictionary.length;
       const dictPtr = this._exports.malloc(len);
+      // malloc returns 0 (NULL) when the request doesn't fit the fixed,
+      // non-growable linear memory. Writing at offset 0 would clobber the
+      // stack, so fail loudly instead.
+      if (!dictPtr) throw new err('oom: dict exceeds wasm memory');
       this._HEAPU8.set(this._dictionary, dictPtr);
       const r = this._exports.loadEncoderDict(dictPtr, len);
       if (r < 0) throw new err(`dict load err ${r >>> 0}`);
@@ -109,6 +113,12 @@ class ZstdEncoder {
     this._srcPtr = this._exports.malloc(this._maxSrcSize);
     this._dstCap = _compressBound(this._maxSrcSize);
     this._dstPtr = this._exports.malloc(this._dstCap);
+    // A 0 pointer means the configured maxSrcSize (+ dict) doesn't fit the
+    // 12 MB linear memory. Surface it now rather than corrupting low memory
+    // on the first compress.
+    if (!this._srcPtr || !this._dstPtr) {
+      throw new err('oom: maxSrcSize too large for wasm memory');
+    }
     // Drain when the dst staging is at least half-full (or 128KB if larger),
     // so subsequent cS() iterations have headroom. Math.max guards against
     // tiny _dstCap configurations from going negative.
