@@ -39326,25 +39326,62 @@ void ZSTD_CCtxParams_registerSequenceProducer(
 
 WASM_EXPORT
 void* malloc(size_t size) {
-    size_t ptr;
-    __asm__(
-        "local.get %0\n"
+    /* Bump allocator over the fixed (non-growable) linear memory, with a
+     * bounds check: if the request doesn't fit in the free tail, return NULL
+     * instead of a pointer past the end of memory. NULL re-arms upstream's
+     * `RETURN_ERROR_IF(x == NULL, memory_allocation)` guards, so exhaustion
+     * surfaces as a catchable ZSTD error rather than an out-of-bounds trap on
+     * first access. With a correct JS-side memory layout this is unreachable.
+     *
+     * Everything is one self-contained volatile asm block on purpose. The
+     * `__heap_cursor` global is opaque to the optimizer; splitting the read,
+     * the bump and the check across separate asm statements (or C) lets LTO
+     * value-number the distinct `global.get`s together and drop `size`. A
+     * single block is one opaque region it cannot reason across.
+     *
+     * ret (%0) is a single read-write operand ("+r"): it carries `size` in
+     * and the pointer (or 0) out. Using one operand avoids clang's unreliable
+     * multi-operand loading for wasm inline asm.
+     *
+     *   free  = (memory.size << 16) - __heap_cursor   ; no underflow: cursor <= end
+     *   if (size > free) ret = 0                       ; also rejects absurd sizes
+     *   else { ret = __heap_cursor; __heap_cursor += size }
+     */
+    size_t ret = size;
+    __asm__ volatile(
+        "memory.size 0\n"
+        "i32.const 16\n"
+        "i32.shl\n"                      /* memBytes */
         "global.get __heap_cursor\n"
-        "local.tee %0\n"
-        "i32.add\n"
-        "global.set __heap_cursor\n"
-        : "=r"(ptr)
-        : "r"(size)
+        "i32.sub\n"                      /* free = memBytes - cursor */
+        "local.get %0\n"                 /* size (%0 still holds size here) */
+        "i32.lt_u\n"                     /* free < size  ->  over budget */
+        "if\n"
+        "i32.const 0\n"
+        "local.set %0\n"                 /* ret = NULL */
+        "else\n"
+        "global.get __heap_cursor\n"     /* [cursor]  (old cursor, the result) */
+        "global.get __heap_cursor\n"     /* [cursor, cursor] */
+        "local.get %0\n"                 /* [cursor, cursor, size] */
+        "i32.add\n"                      /* [cursor, cursor+size] */
+        "global.set __heap_cursor\n"     /* [cursor]  commit bump */
+        "local.set %0\n"                 /* ret = old cursor */
+        "end_if\n"
+        : "+r"(ret)
     );
-    return (void*)ptr;
+    return (void*)ret;
 }
 
 void free(void* ptr) { (void)ptr; }
 
 size_t get_heap_cursor(void) {
     size_t cursor;
-    __asm__(
+    /* local.set %0 captures the global into the output operand — without it
+     * the value is left dangling on the stack (invalid wasm). volatile keeps
+     * the read ordered with the bump's global.set. */
+    __asm__ volatile(
         "global.get __heap_cursor\n"
+        "local.set %0\n"
         : "=r"(cursor)
     );
     return cursor;
