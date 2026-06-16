@@ -62,8 +62,11 @@ class ZstdDecoder {
 
   constructor(options: DecoderOptions = {}) {
     this._dictionary = options.dictionary
-    this._maxSrcSize = Math.max(options.maxSrcSize!, _MAX_DST_BUF_DEFAULT << 6)
-    this._maxDstSize = Math.max(options.maxDstSize!, _MAX_DST_BUF_DEFAULT << 6)
+    // Coalesce undefined → 0: a bare `new ZstdDecoder()` must still get the
+    // finite floor, not Math.max(undefined, …) === NaN (which disables the
+    // size/decompression-bomb guards entirely).
+    this._maxSrcSize = Math.max(options.maxSrcSize ?? 0, _MAX_DST_BUF_DEFAULT << 6)
+    this._maxDstSize = Math.max(options.maxDstSize ?? 0, _MAX_DST_BUF_DEFAULT << 6)
   }
 
   /**

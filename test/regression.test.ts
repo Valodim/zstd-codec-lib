@@ -47,3 +47,36 @@ describe('encoder fails cleanly when buffers do not fit', () => {
     expect(hash(Buffer.from(zlib.zstdDecompressSync(out)))).toBe(hash(src));
   });
 });
+
+/**
+ * Regression — commit "fix(decoder): default size limits to a finite value
+ * instead of NaN". A bare `new ZstdDecoder()` used to compute
+ * Math.max(undefined, floor) = NaN, and `x > NaN` is always false, silently
+ * disabling both the input-size guard and the decompression-bomb output guard.
+ */
+describe('decoder default size limits are finite (not NaN)', () => {
+  // _MAX_DST_BUF_DEFAULT (9_830_464) << 6 — the finite floor the constructor
+  // must apply when no options are given.
+  const FLOOR = 9830464 << 6;
+
+  test('bare new ZstdDecoder() applies the finite floor, never NaN', async () => {
+    const { ZstdDecoder } = await import('../src/zstd-wasm-decoder.ts');
+    const dec = new ZstdDecoder() as unknown as { _maxSrcSize: number; _maxDstSize: number };
+    expect(Number.isNaN(dec._maxSrcSize)).toBe(false);
+    expect(Number.isNaN(dec._maxDstSize)).toBe(false);
+    expect(dec._maxSrcSize).toBe(FLOOR);
+    expect(dec._maxDstSize).toBe(FLOOR);
+  });
+
+  test('explicit limits below the floor clamp up; larger ones win', async () => {
+    const { ZstdDecoder } = await import('../src/zstd-wasm-decoder.ts');
+    type Limits = { _maxSrcSize: number; _maxDstSize: number };
+    const small = new ZstdDecoder({ maxSrcSize: 1, maxDstSize: 1 }) as unknown as Limits;
+    expect(small._maxSrcSize).toBe(FLOOR);
+    expect(small._maxDstSize).toBe(FLOOR);
+    const big = FLOOR * 2;
+    const large = new ZstdDecoder({ maxSrcSize: big, maxDstSize: big }) as unknown as Limits;
+    expect(large._maxSrcSize).toBe(big);
+    expect(large._maxDstSize).toBe(big);
+  });
+});
