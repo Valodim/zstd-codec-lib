@@ -59,8 +59,10 @@ export const rzfh = /*! @__PURE__ */ (dat: Uint8Array): number | DZS => {
     }
     // Guard the *window* size (u), not the content size (e): large payloads
     // are normal and must still decode (future-proof up to level 9 → 4 MB
-    // window). The decoder enforces its own hard window cap on top of this.
-    if (u > 10000000) throw new err('win 2 large');
+    // window). Match the wasm decoder's hard cap (ZSTD_WASM_MAX_WINDOW_SIZE
+    // = 4 MB + 1, windowLog 22 / level 9) so over-cap frames fail here at the
+    // same threshold rather than only later inside the wasm.
+    if (u > 4194305) throw new err('win 2 large');
     return { d, u, e };
   }
   throw new err('bad zstd dat');

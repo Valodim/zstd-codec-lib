@@ -80,3 +80,42 @@ describe('decoder default size limits are finite (not NaN)', () => {
     expect(large._maxDstSize).toBe(big);
   });
 });
+
+/**
+ * Regression — commit "fix(utils): tighten rzfh window guard to the level-9 cap
+ * (4 MB + 1)". The JS-side pre-check used to reject only windows > 10 MB, looser
+ * than the decoder's hard 4 MB + 1 cap; frames declaring a 5-10 MB window slipped
+ * past and were only refused deep in the wasm. The guard now matches the cap.
+ */
+describe('rzfh window guard caps at 4 MB + 1', () => {
+  // Minimal 6-byte frame header: magic + flags(0) + window descriptor.
+  // flags = 0 → single_segment off, so rzfh derives the window from byte[5]:
+  //   exponent = byte5 >> 3   (windowLog = 10 + exponent)
+  //   mantissa = byte5 & 7    (window = base + (base / 8) * mantissa)
+  const frameHeader = (windowDescriptor: number) =>
+    Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, windowDescriptor]);
+  const wd = (exponent: number, mantissa: number) => (exponent << 3) | mantissa;
+
+  test('accepts a 4 MB window (windowLog 22 — the level-9 cap)', async () => {
+    const { rzfh } = await import('../src/utils.ts');
+    const header = rzfh(frameHeader(wd(12, 0))); // 4194304 ≤ 4194305
+    expect(typeof header).toBe('object');
+    expect((header as { u: number }).u).toBe(4194304);
+  });
+
+  test('rejects a ~5 MB window — the gap the old 10 MB guard let through', async () => {
+    const { rzfh } = await import('../src/utils.ts');
+    // windowLog 22, mantissa 2 → 4194304 + 2 * 524288 = 5242880 (~5 MB).
+    expect(() => rzfh(frameHeader(wd(12, 2)))).toThrow('win 2 large');
+  });
+
+  test('rejects just over the cap (windowLog 22, mantissa 1 → ~4.5 MB)', async () => {
+    const { rzfh } = await import('../src/utils.ts');
+    expect(() => rzfh(frameHeader(wd(12, 1)))).toThrow('win 2 large'); // 4718592
+  });
+
+  test('rejects an 8 MB window (windowLog 23, level > 9)', async () => {
+    const { rzfh } = await import('../src/utils.ts');
+    expect(() => rzfh(frameHeader(wd(13, 0)))).toThrow('win 2 large'); // 8388608
+  });
+});
