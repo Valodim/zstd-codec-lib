@@ -12,7 +12,7 @@ export interface DZS {
   e: number; // uncompressed (content) size; 0 when not declared in the header
 }
 
-export const rb = /*! @__PURE__ */ (d: Uint8Array, b: number, n: number) => {
+export const rb = (d: Uint8Array, b: number, n: number) => {
   let i = 0,
     o = 0;
   for (; i < n; ++i) o |= d[b++] << (i << 3);
@@ -35,7 +35,7 @@ export const _fss = (dat: Uint8Array): number => {
 };
 
 // Read Zstandard frame header
-export const rzfh = /*! @__PURE__ */ (dat: Uint8Array): number | DZS => {
+export const rzfh = (dat: Uint8Array): number | DZS => {
   if ((dat[0] | (dat[1] << 8) | (dat[2] << 16)) == 0x2fb528 && dat[3] == 253) {
     // Zstandard frame
     const flg = dat[4];

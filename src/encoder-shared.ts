@@ -114,7 +114,7 @@ function _releaseEncoder(idx: number, key: string): void {
  * on first use otherwise. Pre-warms an encoder if any encoder option is
  * provided so the first compression doesn't pay the wasm-init cost.
  */
-export const setupZstdCodec = /*! @__PURE__ */ async (
+export const setupZstdCodec = async (
   options: CodecOptions = {},
 ): Promise<void> => {
   await _loadModule(options.wasmPath);
@@ -124,7 +124,7 @@ export const setupZstdCodec = /*! @__PURE__ */ async (
   }
 };
 
-export const createEncoder = /*! @__PURE__ */ async (
+export const createEncoder = async (
   options: CodecOptions = {},
 ): Promise<ZstdEncoder> => {
   const mod = await _loadModule(options.wasmPath);
@@ -132,7 +132,7 @@ export const createEncoder = /*! @__PURE__ */ async (
 };
 
 /** Compress a buffer. Acquires an encoder from the pool, releases when done. */
-export const compress = /*! @__PURE__ */ async (
+export const compress = async (
   input: Uint8Array,
   options: CodecOptions = {},
 ): Promise<Uint8Array> => {
@@ -150,7 +150,7 @@ export const compress = /*! @__PURE__ */ async (
  * via setupZstdCodec or a prior compress() call (so the wasm module is
  * cached). Picks any free encoder from the pool; if none, throws.
  */
-export const compressSync = /*! @__PURE__ */ (
+export const compressSync = (
   input: Uint8Array,
   options: EncoderOptions = {},
 ): Uint8Array => {

@@ -95,7 +95,6 @@
     "dist/types/**/*.d.ts",
     "dist/types/**/*.d.ts.map"
   ],
-  "sideEffects": false,
   "browserslist": [
     ">0.3%",
     "chrome >= 80",

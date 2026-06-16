@@ -23,7 +23,7 @@ let cachedModule: WebAssembly.Module;
 
 const loadedDictionaries = new Map<number, Uint8Array>();
 
-function /*! @__PURE__ */ _createDecoderInstance(
+function _createDecoderInstance(
   dictionary?: Uint8Array | ArrayBuffer,
 ): ZstdDecoder {
   const dict =
@@ -38,7 +38,7 @@ function /*! @__PURE__ */ _createDecoderInstance(
   return decoder;
 }
 
-export const setupZstdDecoder = /*! @__PURE__ */ async (options: {
+export const setupZstdDecoder = async (options: {
   maxSrcSize?: number;
   maxDstSize?: number;
   dictionaries?: string[];
@@ -115,7 +115,7 @@ export function _pushToPool(
 /**
  * Load resource as Uint8Array
  */
-const _loadResource = /*! @__PURE__ */ async (
+const _loadResource = async (
   resource: Uint8Array | ArrayBuffer | Request | string,
 ): Promise<Uint8Array> => {
   if (resource instanceof Uint8Array) return resource;
@@ -124,7 +124,7 @@ const _loadResource = /*! @__PURE__ */ async (
   return new Uint8Array(await response.arrayBuffer());
 };
 
-const _getDictId = /*! @__PURE__ */ (input: Uint8Array): number => {
+const _getDictId = (input: Uint8Array): number => {
   if (input.length < 6) return 0;
   try {
     const header = rzfh(input);
@@ -136,7 +136,7 @@ const _getDictId = /*! @__PURE__ */ (input: Uint8Array): number => {
   }
 };
 
-export const createDecoder = /*! @__PURE__ */ async (
+export const createDecoder = async (
   options: ZstdOptions = {},
 ): Promise<ZstdDecoder> => {
   if (!isInitialized) {
@@ -270,14 +270,14 @@ export class ZstdDecompressionStream {
   }
 }
 
-export const decompress = /*! @__PURE__ */ async (
+export const decompress = async (
   input: Uint8Array,
   options?: ZstdOptions,
 ): Promise<Uint8Array> => {
   return (await decompressStream(input, true, options)).buf;
 };
 
-export const decompressStream = /*! @__PURE__ */ async (
+export const decompressStream = async (
   input: Uint8Array,
   reset = false,
   options?: ZstdOptions,
@@ -289,7 +289,7 @@ export const decompressStream = /*! @__PURE__ */ async (
   return result;
 };
 
-export const decompressSync = /*! @__PURE__ */ (
+export const decompressSync = (
   input: Uint8Array,
   expectedSize?: number,
   options?: ZstdOptions,
