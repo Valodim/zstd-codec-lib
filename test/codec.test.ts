@@ -18,7 +18,10 @@ import {
   setupZstdCodec,
 } from '../dist/esm/index.node.js';
 
-const LEVELS = [1, 2, 3] as const;
+// Compression is level-1-only — the encoder rejects any other level.
+const LEVELS = [1] as const;
+// Decoding must stay future-proof for foreign frames up to level 9.
+const DECODE_LEVELS = [1, 3, 6, 9] as const;
 
 beforeAll(async () => {
   await setupZstdCodec({});
@@ -118,7 +121,10 @@ describe('host zstd cross-decode', () => {
       expect(decoded.status).toBe(0);
       expect(bufEq(new Uint8Array(decoded.stdout), src)).toBe(true);
     });
+  }
 
+  // The decoder must handle foreign frames produced at higher levels.
+  for (const level of DECODE_LEVELS) {
     test.skipIf(!hostAvailable)(`host zstd-encode → wasm-decode @ level ${level}`, async () => {
       const src = txt(500);
       const result = spawnSync('zstd', [`-${level}`, '--stdout'], {
@@ -142,7 +148,7 @@ describe('encoder pool concurrency', () => {
     );
 
     const compressed = await Promise.all(
-      inputs.map((src) => compress(src, { level: 3 })),
+      inputs.map((src) => compress(src, { level: 1 })),
     );
 
     const decoded = await Promise.all(compressed.map((c) => decompress(c)));
@@ -160,7 +166,7 @@ describe('encoder pool concurrency', () => {
 
     const results = await Promise.all(
       sessions.map(async (s) => {
-        const compStream = new ZstdCompressionStream({ level: 2 });
+        const compStream = new ZstdCompressionStream({ level: 1 });
         const compressed = await readAll(
           new Blob([s.src]).stream().pipeThrough(compStream),
         );
@@ -195,13 +201,20 @@ describe('edge cases', () => {
   test('large highly-compressible input (1 MB)', async () => {
     const src = new Uint8Array(1024 * 1024);
     src.fill(0xab);
-    const compressed = await compress(src, { level: 3 });
+    const compressed = await compress(src, { level: 1 });
     expect(compressed.length).toBeLessThan(1024); // should compress to almost nothing
     const decoded = await decompress(compressed);
     expect(bufEq(decoded, src)).toBe(true);
   });
 
-  test('rejects out-of-range level', async () => {
+  test('rejects any compression level other than 1', async () => {
+    // @ts-expect-error level is typed as `1`; runtime must also reject 2/3/etc.
+    await expect(compress(txt(10), { level: 2 })).rejects.toThrow();
+    // @ts-expect-error
+    await expect(compress(txt(10), { level: 3 })).rejects.toThrow();
+    // @ts-expect-error
     await expect(compress(txt(10), { level: 5 })).rejects.toThrow();
+    // @ts-expect-error
+    await expect(compress(txt(10), { level: 0 })).rejects.toThrow();
   });
 });

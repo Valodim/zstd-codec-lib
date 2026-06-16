@@ -58,8 +58,9 @@ export interface EncoderOptions {
   /** Compression dictionary */
   dictionary?: Uint8Array;
 
-  /** Compression level (1-3 supported, default 3) */
-  level?: number;
+  /** Compression level. Only level 1 is supported; any other value throws.
+   *  Defaults to 1. */
+  level?: 1;
 
   /** Maximum (uncompressed) input buffer size for sync compression */
   maxSrcSize?: number;

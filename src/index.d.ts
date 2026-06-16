@@ -198,7 +198,7 @@ export declare class ZstdCompressionStream {
 /**
  * Compress a buffer using Zstandard.
  * @param input - Uncompressed input.
- * @param options - Optional compression options (level 1-3, dictionary).
+ * @param options - Optional compression options (dictionary; level must be 1).
  */
 export declare function compress(
   input: Uint8Array,
@@ -223,7 +223,8 @@ export declare function setupZstdCodec(options?: CodecOptions): Promise<void>;
 export declare function createEncoder(options?: EncoderOptions): Promise<ZstdEncoder>;
 
 /**
- * Low-level ZSTD encoder class. Supports compression levels 1-3.
+ * Low-level ZSTD encoder class. Only compression level 1 is supported;
+ * any other level throws.
  */
 export declare class ZstdEncoder {
   constructor(options?: EncoderOptions);

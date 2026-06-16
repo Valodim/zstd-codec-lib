@@ -35,6 +35,16 @@ import { err, _concatUint8Arrays } from './utils.js';
 const _CODEC_PB_RESET = 262144;
 const _DEFAULT_MAX_SRC = 4 * 1024 * 1024; // 4 MiB
 
+/** Only compression level 1 is supported. The wasm is built level-1-only
+ * (ZSTD_WASM_INIT_LEVEL=1, dfast excluded) and its fixed 12 MB layout only
+ * has headroom for the level-1 workspace; higher levels carry a larger
+ * windowLog/hashLog and can push the bump allocator past linear memory.
+ * Reject anything else up front instead of producing undefined behaviour. */
+const _assertLevel1 = (level: number): number => {
+  if (level !== 1) throw new err(`level ${level} unsupported; only level 1`);
+  return level;
+};
+
 /** ZSTD_COMPRESSBOUND(srcSize) — upper bound on compressed output.
  * Mirrors the upstream macro in lib/zstd.h. */
 const _compressBound = (srcSize: number): number =>
@@ -62,12 +72,8 @@ class ZstdEncoder {
 
   constructor(options: EncoderOptions = {}) {
     this._dictionary = options.dictionary;
-    this._level = options.level ?? 3;
+    this._level = _assertLevel1(options.level ?? 1);
     this._maxSrcSize = options.maxSrcSize ?? _DEFAULT_MAX_SRC;
-
-    if (this._level < 1 || this._level > 3) {
-      throw new err(`level ${this._level} not in 1..3`);
-    }
   }
 
   /** Initialize against a compiled codec WebAssembly module. */
@@ -124,7 +130,7 @@ class ZstdEncoder {
     // future malloc()s (e.g. dict reload) don't accumulate forever.
     // For sync compress we don't need to pb() since we already pre-allocated.
     this._HEAPU8.set(input, this._srcPtr);
-    const lvl = level ?? this._level;
+    const lvl = _assertLevel1(level ?? this._level);
     const r = this._exports.compress(this._dstPtr, this._dstCap, this._srcPtr, srcSize, lvl);
     if (r < 0) throw new err(`compress err ${r >>> 0}`);
     return this._HEAPU8.slice(this._dstPtr, this._dstPtr + r);
@@ -147,7 +153,7 @@ class ZstdEncoder {
   compressStream(input: Uint8Array, reset = true, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');
 
-    const lvl = level ?? this._level;
+    const lvl = _assertLevel1(level ?? this._level);
     if (reset) {
       const r = this._exports.initCompressor(lvl);
       if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
@@ -259,7 +265,7 @@ class ZstdEncoder {
 
   /** Reset for a fresh frame; keeps the loaded dictionary. */
   reset(level?: number): void {
-    const r = this._exports.initCompressor(level ?? this._level);
+    const r = this._exports.initCompressor(_assertLevel1(level ?? this._level));
     if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
   }
 

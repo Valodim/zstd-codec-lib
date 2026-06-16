@@ -61,7 +61,7 @@ const _dictKey = (dict?: Uint8Array): string => {
 // pass the default explicitly hit the same pool slot as those who omit it.
 const _DEFAULT_MAX_SRC = 4 * 1024 * 1024;
 const _poolKey = (opts: EncoderOptions): string =>
-  `${_dictKey(opts.dictionary)}|${opts.level ?? 3}|${opts.maxSrcSize ?? _DEFAULT_MAX_SRC}`;
+  `${_dictKey(opts.dictionary)}|${opts.level ?? 1}|${opts.maxSrcSize ?? _DEFAULT_MAX_SRC}`;
 
 async function _createEncoder(opts: EncoderOptions): Promise<ZstdEncoder> {
   const mod = await _loadModule();
