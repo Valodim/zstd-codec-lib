@@ -13,13 +13,15 @@ export interface DZS {
 }
 
 export const rb = (d: Uint8Array, b: number, n: number) => {
-  let i = 0,
-    o = 0;
-  for (; i < n; ++i) o |= d[b++] << (i << 3);
-  // Force unsigned: a 4-byte field whose top bit is set (e.g. reading the
-  // magic, or a >2 GB size / high dictionary ID) would otherwise come back
-  // negative and break downstream size comparisons.
-  return o >>> 0;
+  // Accumulate with multiplication rather than `<<`: JS bitwise ops are
+  // 32-bit, so shift counts wrap mod 32 (corrupting 8-byte Frame_Content_Size
+  // reads, fcf=3) and the result is signed (a 4-byte field with the top bit
+  // set — magic, >2 GB size, high dictionary ID — would come back negative).
+  // Float math is exact up to 2^53, far beyond what these size/window hints
+  // need, and naturally stays unsigned.
+  let o = 0;
+  for (let i = 0; i < n; ++i) o += d[b++] * 2 ** (i << 3);
+  return o;
 };
 
 export const _fss = (dat: Uint8Array): number => {
@@ -48,8 +50,7 @@ export const rzfh = (dat: Uint8Array): number | DZS => {
     const db = df == 3 ? 4 : df;
     // dictionary id
     const d = rb(dat, bt, db);
-    // @ts-expect-error
-    const e = rb(dat, bt + db, fcf ? 1 << fcf : ss) + (fcf == 1 && 256);
+    const e = rb(dat, bt + db, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
     // window size
     let u = e;
     if (!ss) {
