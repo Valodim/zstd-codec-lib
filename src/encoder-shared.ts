@@ -158,11 +158,16 @@ export const compressSync = (
       }
     }
   }
-  // Whole pool is busy — fall back to the first slot (still safe in
-  // single-threaded JS unless the caller is interleaving sync calls
-  // from different reentrant contexts, which compressSync explicitly
-  // doesn't support).
-  return pool[0].compressSync(input, options.level);
+  // Whole pool is busy — DON'T reuse a locked slot: a ZstdCompressionStream
+  // may hold it across awaits, and sharing its CCtx/stream state would
+  // corrupt both. Run on a transient encoder instead.
+  if (!cachedModule) throw new err('codec not init — call setupZstdCodec or compress first');
+  const enc = new ZstdEncoder(options).init(cachedModule);
+  try {
+    return enc.compressSync(input, options.level);
+  } finally {
+    enc._destroy();
+  }
 };
 
 /** Streaming WHATWG TransformStream — pipes plaintext bytes to compressed bytes. */

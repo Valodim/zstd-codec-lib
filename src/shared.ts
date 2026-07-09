@@ -219,7 +219,23 @@ export const decompressSync = (
   expectedSize?: number,
   _options?: ZstdOptions,
 ): Uint8Array => {
-  const decoder = decoderPool[0] || _createDecoderInstance();
-  const result = decoder.decompressSync(input, expectedSize);
-  return result;
+  // Never reuse a pool slot that a ZstdDecompressionStream may hold locked
+  // across awaits — decompressSync resets the shared ZSTD_DCtx and heap
+  // cursor, which would corrupt that in-flight stream. Take a free slot if
+  // one exists, otherwise run on a transient instance.
+  let idx = -1;
+  for (let i = 0; i < poolLocks.length; ++i) {
+    if (!poolLocks[i]) {
+      poolLocks[i] = true;
+      idx = i;
+      break;
+    }
+  }
+  const decoder = idx >= 0 ? decoderPool[idx] : _createDecoderInstance();
+  try {
+    return decoder.decompressSync(input, expectedSize);
+  } finally {
+    if (idx >= 0) _releaseDecoder(idx);
+    else decoder._destroy();
+  }
 };
