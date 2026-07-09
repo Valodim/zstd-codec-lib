@@ -75,9 +75,13 @@ declare class ZstdDecoder {
      *
      * @param input - Input chunk
      * @param reset - Reset stream for new decompression (default: false)
+     * @param final - Treat `input` as the complete remaining input: after it is
+     *   consumed the current frame must have ended, else the data was truncated
+     *   and we throw. Off by default so incremental chunk-at-a-time callers
+     *   (ZstdDecompressionStream) are not flagged mid-stream.
      * @returns Decompression result with buffer, code, and input offset
      */
-    decompressStream(input: Uint8Array, reset?: boolean): StreamResult;
+    decompressStream(input: Uint8Array, reset?: boolean, final?: boolean): StreamResult;
     /**
      * Clean up ZSTD context
      */

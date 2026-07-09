@@ -29,7 +29,7 @@ export declare class ZstdDecompressionStream {
      */
     constructor(options?: ZstdOptions);
 }
-export declare const decompress: (input: Uint8Array, options?: ZstdOptions) => Promise<Uint8Array>;
+export declare const decompress: (input: Uint8Array, _options?: ZstdOptions) => Promise<Uint8Array>;
 export declare const decompressStream: (input: Uint8Array, reset?: boolean, _options?: ZstdOptions) => Promise<StreamResult>;
 export declare const decompressSync: (input: Uint8Array, expectedSize?: number, _options?: ZstdOptions) => Uint8Array;
 //# sourceMappingURL=shared.d.ts.map
