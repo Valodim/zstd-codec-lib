@@ -1,21 +1,23 @@
 /**
  * \file zstd_wasm_full.c
- * Full decoder plus a compressor restricted to levels 1-3 (strategies
- * fast / dfast).
+ * Full decoder plus a level-1 compressor (fast strategy only; the build
+ * excludes dfast via ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR, see Makefile).
  *
  * Heavy strategies (greedy/lazy/lazy2/btlazy2/btopt/btultra*) are excluded
  * via upstream's ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR macros, which collapse the
  * static dispatch table entries to NULL so --gc-sections + LTO drop their
  * code paths entirely.
  *
- * Decoder exports: setHeapEnd / loadDecoderDict / decompressStreamStep /
- *                  resetDecoder / decompress.
+ * Decoder exports: setHeapEnd / decompressStreamStep / resetDecoder /
+ *                  decompress.
  *
- * New compression exports:
- *   - initCompressor(level)            init/reset CCtx for a given level (1-3)
- *   - loadEncoderDict(dict, dictSize)  load compression dictionary
+ * Compression exports:
+ *   - initCompressor(level)            init/reset CCtx for a fresh frame
  *   - compress(dst,dCap,src,sSz,level) single-shot compress
  *   - compressStreamStep(endOp)        streaming compress step (mirrors decoder)
+ *
+ * Dictionaries are not supported (in either direction); frames that
+ *  reference a dictionary ID fail with ZSTD_error_dictionary_wrong.
  */
 
 
@@ -17315,7 +17317,6 @@ __attribute__((section(".rodata")))
 static ZstdPadObject ZstdPad;
 static ZSTD_DCtx* dctx = &ZstdPad.dctx;
 
-static struct ZSTD_DDict_s* ddict;
 static ZSTD_inBuffer*  const in_buffer  = (ZSTD_inBuffer*)&ZstdBufs.in_buffer;
 static ZSTD_outBuffer* const out_buffer = (ZSTD_outBuffer*)&ZstdBufs.out_buffer;
 
@@ -39427,7 +39428,6 @@ void resetDecoder(void) {
 
 void _initialize(void) {
     /* Decoder side: same hand-folded ZSTD_createDCtx as the decoder build. */
-    dctx->dictUses = ZSTD_use_indefinitely;
     dctx->maxWindowSize = ZSTD_WASM_MAX_WINDOW_SIZE;
     /* Bump above all static data — the codec build adds compress-side
      * rodata (default cparams, code tables, etc) so 256KB is safe. */
@@ -39448,7 +39448,7 @@ void _initialize(void) {
      * Only the non-buffered (single-shot) workspace is committed here; the
      * streaming path (compressStreamStep / ZSTD_compressStream2) adds its
      * input/output staging buffers lazily on first use. Either way the bump
-     * allocator is bounds-checked, so an over-budget (dictionary + maxSrcSize)
+     * allocator is bounds-checked, so an over-budget maxSrcSize
      * configuration surfaces as a catchable ZSTD memory_allocation error
      * rather than an out-of-bounds write. */
 #ifndef ZSTD_WASM_INIT_LEVEL
@@ -39456,42 +39456,6 @@ void _initialize(void) {
 #endif
     cctx = ZSTD_createCCtx();
     ZSTD_compressBegin(cctx, ZSTD_WASM_INIT_LEVEL);
-}
-
-/* Compression dictionary, set by cD(). The single-shot path (cs) routes
- * it through ZSTD_compress_usingDict directly. The streaming path needs
- * the dict wired into the cctx, which ic() does via loadDictionary on
- * each frame reset. */
-static const void* cdict_buf;
-static size_t cdict_size;
-
-WASM_EXPORT
-void loadDecoderDict(const void* dict, size_t dictSize) {
-    ddict = (ZSTD_DDict*) malloc(sizeof(ZSTD_DDict));
-    ddict->dictContent = dict;
-    ddict->dictSize = dictSize;
-    ddict->entropy.hufTable[0] = (HUF_DTable)((ZSTD_HUFFDTABLE_CAPACITY_LOG)*0x1000001);
-    ddict->dictID = 0;
-    ddict->entropyPresent = 0;
-    U32 const magic = MEM_readLE32(ddict->dictContent);
-    if (magic == ZSTD_MAGIC_DICTIONARY) {
-        ddict->dictID = MEM_readLE32((const char*)ddict->dictContent + ZSTD_FRAMEIDSIZE);
-        ZSTD_loadDEntropy(&ddict->entropy, ddict->dictContent, ddict->dictSize);
-        ddict->entropyPresent = 1;
-    }
-    dctx->ddict = ddict;
-}
-
-static size_t decompressBegin_usingDDict(void) {
-    if (ddict) {
-        const char* const dictStart = (const char*)ddict->dictContent;
-        size_t const dictSize = ddict->dictSize;
-        const void* const dictEnd = dictStart + dictSize;
-        dctx->ddictIsCold = (dctx->dictEnd != dictEnd);
-    }
-    FORWARD_IF_ERROR(ZSTD_decompressBegin(dctx) , "");
-    if (ddict) ZSTD_copyDDictParameters(dctx, ddict);
-    return 0;
 }
 
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
@@ -39526,11 +39490,7 @@ static size_t dm(void* dst, size_t dstCapacity, const void* src, size_t srcSize)
                             frameParameter_windowTooLarge, "");
         }
 
-        if (ddict) {
-            FORWARD_IF_ERROR(decompressBegin_usingDDict(), "");
-        } else {
-            FORWARD_IF_ERROR(ZSTD_decompressBegin(dctx), "");
-        }
+        FORWARD_IF_ERROR(ZSTD_decompressBegin(dctx), "");
         ZSTD_checkContinuity(dctx, dst, dstCapacity);
 
         {   const size_t res = ZSTD_decompressFrame(dctx, dst, dstCapacity, &src, &srcSize);
@@ -39614,7 +39574,7 @@ size_t decompressStreamStep(void) {
                     break;
             }   }
 
-            FORWARD_IF_ERROR(decompressBegin_usingDDict(), "");
+            FORWARD_IF_ERROR(ZSTD_decompressBegin(dctx), "");
 
             if (dctx->format == ZSTD_f_zstd1
                 && (MEM_readLE32(dctx->headerBuffer) & ZSTD_MAGIC_SKIPPABLE_MASK) == ZSTD_MAGIC_SKIPPABLE_START) {
@@ -39758,45 +39718,23 @@ size_t decompressStreamStep(void) {
  * (only one operation runs at a time per wasm instance).
  */
 
-/* Reset CCtx for a fresh frame at the given compression level (1-3).
- * If a dictionary was stashed via loadEncoderDict(), load it into the cctx
- * so streaming compress (compressStreamStep / ZSTD_compressStream2) honors
- * it too — session_only reset drops the loaded dict, so we re-load on every
- * frame. */
+/* Reset CCtx for a fresh frame at the given compression level. */
 WASM_EXPORT
 size_t initCompressor(int level) {
     size_t const r1 = ZSTD_CCtx_reset(cctx, ZSTD_reset_session_only);
     if (ZSTD_isError(r1)) return r1;
     size_t const r2 = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
     if (ZSTD_isError(r2)) return r2;
-    if (cdict_buf) {
-        return ZSTD_CCtx_loadDictionary(cctx, cdict_buf, cdict_size);
-    }
     return 0;
 }
 
-/* Stash a compression dictionary. We don't load it into the cctx here;
- * see the comment on cdict_buf above. */
-WASM_EXPORT
-size_t loadEncoderDict(const void* dict, size_t dictSize) {
-    cdict_buf = dict;
-    cdict_size = dictSize;
-    return 0;
-}
-
-/* Single-shot compress. Uses ZSTD_compress_usingDict so a dictionary
- * stashed via loadEncoderDict() is honored — and so the existing workspace
+/* Single-shot compress. Uses ZSTD_compressCCtx so the existing workspace
  * allocated at _initialize time is sufficient (the advanced compress2 path
  * needs a larger workspace that wouldn't fit our fixed-memory layout). */
 WASM_EXPORT
 size_t compress(void* dst, size_t dstCapacity,
           const void* src, size_t srcSize,
           int level) {
-    if (cdict_buf) {
-        return ZSTD_compress_usingDict(cctx, dst, dstCapacity,
-                                       src, srcSize,
-                                       cdict_buf, cdict_size, level);
-    }
     return ZSTD_compressCCtx(cctx, dst, dstCapacity, src, srcSize, level);
 }
 

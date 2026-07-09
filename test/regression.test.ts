@@ -259,6 +259,36 @@ describe('ZstdDecompressionStream chunked input', () => {
 });
 
 /**
+ * Dictionary support was removed (v0.3.0) — the decoder must reject frames
+ * that reference a dictionary ID with a clean ZSTD error (dictionary_wrong,
+ * -32) rather than decode garbage or trap.
+ */
+describe('dictionary-referencing frames are rejected', () => {
+  // Minimal hand-crafted frame: magic + FHD(0x21: single-segment, 1-byte
+  // dictID) + dictID(5) + FCS(1 byte content) + one raw last-block with a
+  // single payload byte.
+  const dictFrame = Uint8Array.from([
+    0x28, 0xb5, 0x2f, 0xfd, // magic
+    0x21,                   // FHD: singleSegment=1, dictIDflag=1
+    0x05,                   // dictID = 5
+    0x01,                   // frame content size = 1
+    0x09, 0x00, 0x00,       // block header: last=1, type=raw, size=1
+    0x42,                   // payload
+  ]);
+
+  test('decompress() fails with a ZSTD error, not garbage output', async () => {
+    const { decompress } = await import('../dist/esm/index.node.js');
+    await expect(decompress(dictFrame)).rejects.toThrow(/dec err/);
+  });
+
+  test('decompressSync() fails likewise', async () => {
+    const { decompressSync, createDecoder } = await import('../dist/esm/index.node.js');
+    await createDecoder(); // ensure the wasm module is cached
+    expect(() => decompressSync(dictFrame)).toThrow();
+  });
+});
+
+/**
  * Formerly malloc-bounds.test.ts — the wasm bump allocator over fixed,
  * non-growable memory must refuse any request that would run past the end of
  * memory by returning NULL (0). The cursor is driven to the boundary via

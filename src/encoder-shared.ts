@@ -38,30 +38,19 @@ async function _loadModule(wasmPath?: string): Promise<WebAssembly.Module> {
  * in-flight use so concurrent compressions don't corrupt the
  * encoder's CCtx / stream-struct state.
  *
- * Pool key encodes (dict fingerprint | level | maxSrcSize) — encoders
- * with different settings can't share a slot because the dictionary
- * and bound buffers are baked in at init.
+ * Pool key encodes (level | maxSrcSize) — encoders with different
+ * settings can't share a slot because the bound buffers are baked in
+ * at init.
  */
 const _MAX_POOL = 3;
 const encoderPools = new Map<string, ZstdEncoder[]>();
 const encoderLocks = new Map<string, boolean[]>();
 
-const _dictKey = (dict?: Uint8Array): string => {
-  if (!dict || dict.length === 0) return '';
-  // FNV-1a 32-bit, sufficient as a cache discriminator.
-  let h = 2166136261;
-  for (let i = 0; i < dict.length; i++) {
-    h ^= dict[i];
-    h = Math.imul(h, 16777619);
-  }
-  return `${dict.length}:${(h >>> 0).toString(16)}`;
-};
-
 // Default must mirror ZstdEncoder's _DEFAULT_MAX_SRC so that callers who
 // pass the default explicitly hit the same pool slot as those who omit it.
 const _DEFAULT_MAX_SRC = 4 * 1024 * 1024;
 const _poolKey = (opts: EncoderOptions): string =>
-  `${_dictKey(opts.dictionary)}|${opts.level ?? 1}|${opts.maxSrcSize ?? _DEFAULT_MAX_SRC}`;
+  `${opts.level ?? 1}|${opts.maxSrcSize ?? _DEFAULT_MAX_SRC}`;
 
 async function _createEncoder(opts: EncoderOptions): Promise<ZstdEncoder> {
   const mod = await _loadModule();
@@ -118,7 +107,7 @@ export const setupZstdCodec = async (
   options: CodecOptions = {},
 ): Promise<void> => {
   await _loadModule(options.wasmPath);
-  if (options.dictionary || options.level || options.maxSrcSize) {
+  if (options.level || options.maxSrcSize) {
     const [, idx, key] = await _acquireEncoder(options);
     _releaseEncoder(idx, key);
   }

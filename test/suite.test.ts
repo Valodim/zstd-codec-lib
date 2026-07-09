@@ -32,12 +32,7 @@ const TEST_FILES = [
 const TEST_SIZES = [256, 10 * 1024, 100 * 1024];
 
 const TEST_DATA_DIR = join(__dirname, 'data');
-const DICT_DIR = join(__dirname, 'dictionaries');
 const EDGE_CASES_DIR = join(__dirname, 'edge-cases');
-
-let testDict: Buffer;
-let jsonDict: Buffer;
-let httpDict: Buffer;
 
 let fixtureServer: any;
 
@@ -52,16 +47,6 @@ const randomBufferHashes = new Map<number, string>();
 
 beforeAll(async () => {
   ensureTestData();
-
-  const dictPaths = {
-    test: join(DICT_DIR, 'test.dict'),
-    json: join(DICT_DIR, 'test.json.dict'),
-    http: join(EDGE_CASES_DIR, 'golden-dictionaries/http-dict-missing-symbols'),
-  };
-
-  testDict = readFileSync(dictPaths.test);
-  jsonDict = readFileSync(dictPaths.json);
-  httpDict = readFileSync(dictPaths.http);
 
   console.log('Generating random buffers...');
   [
@@ -84,7 +69,6 @@ beforeAll(async () => {
   for (const data of [...testFiles, ...randomBuffers.values()]) {
     for (const level of COMPRESSION_LEVELS.ALL) {
       compressionJobs.push({ data, opts: { level } });
-      if (testDict) compressionJobs.push({ data, opts: { level, dictionary: testDict } });
     }
   }
 
@@ -152,9 +136,8 @@ afterAll(async () => {
 });
 
 function getCacheKey(data: Buffer, opts: any = {}) {
-  const dictKey = opts.dictionary ? hash(opts.dictionary).slice(0, 8) : 'nodict';
   const dataHash = hash(data).slice(0, 8);
-  return `${dataHash}-${opts.level || 3}-${dictKey}`;
+  return `${dataHash}-${opts.level || 3}`;
 }
 
 function compress(data: Buffer, opts = {}): Buffer {
@@ -218,17 +201,6 @@ describe('WASM decompression', () => {
       await testMultipleLevels(data, COMPRESSION_LEVELS.ALL);
     });
 
-    test.each(TEST_FILES)('%s - all levels with dictionary', async (filename) => {
-      const data = loadTestFile(filename);
-      await testMultipleLevels(data, COMPRESSION_LEVELS.ALL, {
-        dictionary: testDict,
-      });
-    });
-
-    test('JSON with JSON dictionary', async () => {
-      const data = loadTestFile('test.json');
-      await testRoundtrip(data, { level: 3, dictionary: jsonDict });
-    });
   });
 
   // Edge case tests
@@ -256,16 +228,6 @@ describe('WASM decompression', () => {
       const decompressed = await decompress(concatenated);
       const expected = Buffer.concat([data1, data2]);
       expect(hash(decompressed)).toBe(hash(expected));
-    });
-
-    test('zero-weight dictionary', async () => {
-      const zeroWeightDict = readFileSync(join(EDGE_CASES_DIR, 'dict-files/zero-weight-dict'));
-      await testRoundtrip(Buffer.from('Test data without zeros'), {
-        dictionary: zeroWeightDict,
-      });
-      await testRoundtrip(Buffer.from('0000000000'), {
-        dictionary: zeroWeightDict,
-      });
     });
   });
 
@@ -312,11 +274,6 @@ describe('WASM decompression', () => {
         await testRoundtrip(readFileSync(path));
       }
     });
-
-    test('dictionary with missing symbols', async () => {
-      const path = join(EDGE_CASES_DIR, 'golden-compression/http');
-      await testRoundtrip(readFileSync(path), { dictionary: httpDict });
-    });
   });
 
   describe('roundtrip tests', () => {
@@ -324,13 +281,6 @@ describe('WASM decompression', () => {
       for (const level of COMPRESSION_LEVELS.REPRESENTATIVE) {
         const data = randomBuffer(size);
         await testRoundtrip(data, { level });
-      }
-    });
-
-    test.each(TEST_SIZES)('%i bytes - with dictionary', async (size) => {
-      for (const level of COMPRESSION_LEVELS.REPRESENTATIVE) {
-        const data = randomBuffer(size);
-        await testRoundtrip(data, { level, dictionary: testDict });
       }
     });
   });
@@ -463,24 +413,6 @@ describe('Streaming decompression', () => {
     });
   });
 
-  describe('dictionary with streaming', () => {
-    test('chunked decompression with dictionary', async () => {
-      const data = randomBuffer(20 * 1024);
-      const compressed = compress(data, { dictionary: testDict });
-
-      // Split into chunks
-      const chunks: Buffer[] = [];
-      for (let i = 0; i < compressed.length; i += 2048) {
-        chunks.push(slice(compressed, i, Math.min(i + 2048, compressed.length)));
-      }
-
-      const decompressed = await decompress(Buffer.concat(chunks), {
-        dictionary: testDict,
-      });
-      expect(hash(decompressed)).toBe(hash(data));
-    });
-  });
-
   // decompressStream API tests
   describe('decompressStream API', () => {
     test('stream API with single chunk', async () => {
@@ -575,13 +507,6 @@ describe('Streaming decompression', () => {
       }
 
       const decompressed = Buffer.concat(chunks);
-      expect(hash(decompressed)).toBe(hash(data));
-    });
-
-    test('with dictionary', async () => {
-      const data = randomBuffer(50 * 1024);
-      const compressed = compress(data, { dictionary: testDict });
-      const decompressed = await streamDecompress(compressed, { dictionary: testDict });
       expect(hash(decompressed)).toBe(hash(data));
     });
   });

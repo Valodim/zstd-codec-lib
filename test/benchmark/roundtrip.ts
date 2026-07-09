@@ -12,7 +12,6 @@ import { hash } from '../lib/utils.js';
 
 const dir = import.meta.dirname || process.cwd();
 const testData = readFileSync(join(dir, '../data/test.json'));
-const dict = readFileSync(join(dir, '../dictionaries/test.json.dict'));
 const expectedHash = hash(testData);
 
 await createDecoder();
@@ -30,12 +29,7 @@ const zstdConfig = {
   [constants.ZSTD_c_enableLongDistanceMatching]: 1,
 };
 
-const compressedWithDict = zstdCompressSync(testData, {
-  params: zstdConfig,
-  dictionary: dict,
-});
-
-const compressedNoDict = zstdCompressSync(testData, {
+const compressed = zstdCompressSync(testData, {
   params: zstdConfig,
 });
 
@@ -44,8 +38,8 @@ const validate = (result: Uint8Array, label: string) => {
   console.log(`✓ ${label}`);
 };
 
-const readStream = async (buf: Buffer, dict?: Uint8Array) => {
-  const stream = new ZstdDecompressionStream(dict ? { dictionary: dict } : {});
+const readStream = async (buf: Buffer) => {
+  const stream = new ZstdDecompressionStream();
   const reader = stream.readable.getReader();
   const writer = stream.writable.getWriter();
 
@@ -70,19 +64,9 @@ const readStream = async (buf: Buffer, dict?: Uint8Array) => {
 
 console.log('Running roundtrip validation...\n');
 
-validate(
-  decompressSync(compressedWithDict, undefined, { dictionary: dict }),
-  'decompressSync (with dict)',
-);
-validate(
-  (await decompressStream(compressedWithDict, true, { dictionary: dict })).buf,
-  'decompressStream (with dict)',
-);
-validate(await readStream(compressedWithDict, dict), 'ZstdDecompressionStream (with dict)');
-
-validate(decompressSync(compressedNoDict), 'decompressSync (no dict)');
-validate((await decompressStream(compressedNoDict, true)).buf, 'decompressStream (no dict)');
-validate(await readStream(compressedNoDict), 'ZstdDecompressionStream (no dict)');
+validate(decompressSync(compressed), 'decompressSync');
+validate((await decompressStream(compressed, true)).buf, 'decompressStream');
+validate(await readStream(compressed), 'ZstdDecompressionStream');
 
 const wasmModule = new WebAssembly.Module(
   readFileSync(
@@ -90,42 +74,8 @@ const wasmModule = new WebAssembly.Module(
   ),
 );
 
-let decoderWithDict = new ZstdDecoder({ dictionary: dict });
-decoderWithDict.init(wasmModule);
+const decoder = new ZstdDecoder();
+decoder.init(wasmModule);
 
-validate(
-  decoderWithDict.decompressSync(compressedWithDict),
-  'ZstdDecoder instance (decompressSync with dict)',
-);
-validate(
-  decoderWithDict.decompressStream(compressedWithDict, true).buf,
-  'ZstdDecoder instance (decompressStream with dict)',
-);
-validate(
-  decoderWithDict.decompressSync(compressedNoDict),
-  'ZstdDecoder instance (decompressSync no dict)',
-);
-validate(
-  decoderWithDict.decompressStream(compressedNoDict, true).buf,
-  'ZstdDecoder instance (decompressStream no dict)',
-);
-
-decoderWithDict = new ZstdDecoder({ dictionary: dict });
-decoderWithDict.init(wasmModule);
-
-validate(
-  decoderWithDict.decompressSync(compressedNoDict),
-  'ZstdDecoder instance (decompressSync no dict)',
-);
-validate(
-  decoderWithDict.decompressStream(compressedNoDict, true).buf,
-  'ZstdDecoder instance (decompressStream no dict)',
-);
-validate(
-  decoderWithDict.decompressSync(compressedWithDict),
-  'ZstdDecoder instance (decompressSync with dict)',
-);
-validate(
-  decoderWithDict.decompressStream(compressedWithDict, true).buf,
-  'ZstdDecoder instance (decompressStream with dict)',
-);
+validate(decoder.decompressSync(compressed), 'ZstdDecoder instance (decompressSync)');
+validate(decoder.decompressStream(compressed, true).buf, 'ZstdDecoder instance (decompressStream)');

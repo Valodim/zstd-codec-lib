@@ -8,90 +8,32 @@
   <script type="module">
     import { ZstdDecoder, ZstdDecompressionStream } from 'http://localhost:42069/dist/esm/index.web.js';
 
-    
-    async function loadDict(name) {
-      try {
-        const response = await fetch(`http://localhost:42069/dictionaries/${name}`);
-        if (!response.ok) return null;
-        return new Uint8Array(await response.arrayBuffer());
-      } catch {
-        return null;
-      }
-    }
-    const bufferToHex = (buffer) => 
-      Array.from(new Uint8Array(buffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-    
-    const hash = async (data) => 
-      bufferToHex(await crypto.subtle.digest('SHA-1', data));
-
     // Load and compile WASM module once
     const wasmUrl = 'http://localhost:42069/dist/esm/zstd.wasm';
     const wasmModule = await WebAssembly.compileStreaming(fetch(wasmUrl));
-    
-    // Load all dictionaries
-    const dictionaries = {
-      test: await loadDict('test.dict'),
-      json: await loadDict('test.json.dict'),
-      http: await loadDict('../edge-cases/golden-dictionaries/http-dict-missing-symbols'),
-      zeroWeight: await loadDict('../edge-cases/dict-files/zero-weight-dict'),
-    };
-    
-    const dictHashes = new Map();
-    for (const [name, dict] of Object.entries(dictionaries)) {
-      if (dict) dictHashes.set(await hash(dict), name);
-    }
 
-    const decoders = new Map();
-    
-    // No-dict decoder
     const mainDecoder = new ZstdDecoder({
       maxSrcSize: 512 * 1024 * 1024,
       maxDstSize: 512 * 1024 * 1024
     });
     await mainDecoder.init(wasmModule);
-    decoders.set('', mainDecoder);
-    
-    // Dict decoders
-    for (const [name, dict] of Object.entries(dictionaries)) {
-      if (dict) {
-        const decoder = new ZstdDecoder({
-          maxSrcSize: 512 * 1024 * 1024,
-          maxDstSize: 512 * 1024 * 1024,
-          dictionary: dict
-        });
-        await decoder.init(wasmModule);
-        decoders.set(name, decoder);
-      }
-    }
-    
+
     // Expose API
     window.ZstdWasm = {
       ready: true,
       ZstdDecompressionStream,
-      
+
       decompressSync: async (data, opts = {}) => {
-        const dictName = opts.dictionary ? await getDictName(opts.dictionary) : '';
-        const decoder = decoders.get(dictName) || mainDecoder;
-        return decoder.decompressSync(data);
+        return mainDecoder.decompressSync(data);
       },
-      
+
       decompressStream: async (data, isFirst = false, opts = {}) => {
-        const dictName = opts.dictionary ? await getDictName(opts.dictionary) : '';
-        const decoder = decoders.get(dictName) || mainDecoder;
-        return decoder.decompressStream(data, isFirst);
+        return mainDecoder.decompressStream(data, isFirst);
       },
-      
+
       decompress: (data, opts) => window.ZstdWasm.decompressSync(data, opts),
     };
-    
-    async function getDictName(dictData) {
-      const dictHash = await hash(dictData);
-      return dictHashes.get(dictHash) || '';
-    }
-    console.log('WASM decoder initialized with dictionaries:', Object.keys(dictionaries).filter(k => dictionaries[k]));
+    console.log('WASM decoder initialized');
   </script>
 </body>
 </html>
-

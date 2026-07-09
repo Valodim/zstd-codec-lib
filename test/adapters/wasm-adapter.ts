@@ -2,7 +2,6 @@ import { Buffer } from 'node:buffer';
 
 import type { ZstdOptions } from '../../src/types.js';
 import type { ZstdDecoder } from '../../src/zstd-wasm-decoder.js';
-import { slice } from '../lib/utils.js';
 
 // Dynamically select which build variant to test based on TEST_VARIANT env var
 const TEST_VARIANT = process.env.TEST_VARIANT || 'node';
@@ -48,34 +47,6 @@ export const wasmAdapter: WasmDecoderAdapter = {
       throw new Error('Stream decoder not initialized');
     }
     return streamDecoder.decompressStream(data, isFirst);
-  },
-};
-
-export const wasmDecoder = {
-  async init(dictionary: Buffer | Uint8Array | null = null): Promise<ZstdDecoder> {
-    return await createDecoder({ dictionary: dictionary || undefined });
-  },
-
-  decompressStream(
-    decoder: ZstdDecoder,
-    compressed: Buffer,
-    numChunks: number,
-    isFirst = true,
-  ): Buffer {
-    const outputChunks: Buffer[] = [];
-    const chunkSize = Math.ceil(compressed.length / numChunks);
-
-    for (let i = 0; i < numChunks; i++) {
-      const offset = i * chunkSize;
-      if (offset >= compressed.length) break;
-      const result = decoder.decompressStream(
-        slice(compressed, offset, Math.min(offset + chunkSize, compressed.length)),
-        i === 0 && isFirst,
-      );
-      if (result?.buf?.length > 0) outputChunks.push(Buffer.from(result.buf));
-    }
-
-    return Buffer.concat(outputChunks);
   },
 };
 

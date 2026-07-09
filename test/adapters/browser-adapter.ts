@@ -69,25 +69,13 @@ export class BrowserAdapter {
     if (!this.page) throw new Error('Browser not initialized');
     const base64 = Buffer.from(data).toString('base64');
     const serializedOpts: any = { ...opts };
-    if (opts.dictionary) {
-      serializedOpts.dictionaryBase64 = Buffer.from(opts.dictionary as Uint8Array).toString(
-        'base64',
-      );
-      delete serializedOpts.dictionary;
-    }
 
     const resultBase64 = (await this.page.evaluate(
       async ([dataBase64, options]) => {
         // @ts-ignore
         const bytes = window.base64ToUint8Array(dataBase64 as string);
 
-        // Deserialize dictionary if present
         const decompressOpts: any = { ...options };
-        if ((options as any).dictionaryBase64) {
-          // @ts-ignore
-          decompressOpts.dictionary = window.base64ToUint8Array((options as any).dictionaryBase64);
-          delete decompressOpts.dictionaryBase64;
-        }
 
         // @ts-ignore
         const decompressed = await window.ZstdWasm.decompress(bytes, decompressOpts);
@@ -108,25 +96,13 @@ export class BrowserAdapter {
     if (!this.page) throw new Error('Browser not initialized');
     const base64 = Buffer.from(data).toString('base64');
     const serializedOpts: any = { ...opts };
-    if (opts.dictionary) {
-      serializedOpts.dictionaryBase64 = Buffer.from(opts.dictionary as Uint8Array).toString(
-        'base64',
-      );
-      delete serializedOpts.dictionary;
-    }
 
     const result = (await this.page.evaluate(
       async ([dataBase64, isFirstChunk, options]) => {
         // @ts-ignore
         const bytes = window.base64ToUint8Array(dataBase64 as string);
 
-        // Deserialize dictionary if present
         const decompressOpts: any = { ...options };
-        if ((options as any).dictionaryBase64) {
-          // @ts-ignore
-          decompressOpts.dictionary = window.base64ToUint8Array((options as any).dictionaryBase64);
-          delete decompressOpts.dictionaryBase64;
-        }
 
         // @ts-ignore
         const result = await window.ZstdWasm.decompressStream(bytes, isFirstChunk, decompressOpts);
@@ -149,12 +125,6 @@ export class BrowserAdapter {
   createDecompressionStream(opts: ZstdOptions = {}): any {
     if (!this.page) throw new Error('Browser not initialized');
     const serializedOpts: any = { ...opts };
-    if (opts.dictionary) {
-      serializedOpts.dictionaryBase64 = Buffer.from(opts.dictionary as Uint8Array).toString(
-        'base64',
-      );
-      delete serializedOpts.dictionary;
-    }
 
     return {
       readable: {
@@ -201,13 +171,6 @@ export class BrowserAdapter {
         await this.page!.evaluate(
           ([options]) => {
             const decompressOpts: any = { ...options };
-            if ((options as any).dictionaryBase64) {
-              // @ts-ignore
-              decompressOpts.dictionary = window.base64ToUint8Array(
-                (options as any).dictionaryBase64,
-              );
-              delete decompressOpts.dictionaryBase64;
-            }
             // @ts-ignore
             const stream = new window.ZstdWasm.ZstdDecompressionStream(decompressOpts);
             // @ts-ignore

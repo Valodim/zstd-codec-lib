@@ -19,7 +19,7 @@ endif
 
 CLANG = $(LLVM_DIR)/bin/clang
 
-EXPORTS = malloc _initialize setHeapEnd loadDecoderDict decompressStreamStep resetDecoder decompress initCompressor loadEncoderDict compress compressStreamStep getInBufferPtr
+EXPORTS = malloc _initialize setHeapEnd decompressStreamStep resetDecoder decompress initCompressor compress compressStreamStep getInBufferPtr
 BIN_DIR = bin
 AMALGAMATED_SOURCE = $(BIN_DIR)/zstd_wasm_amalgamated.c
 OUTPUT_DIR = build

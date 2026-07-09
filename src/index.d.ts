@@ -70,7 +70,7 @@ export declare function decompress(input: Uint8Array, options?: ZstdOptions): Pr
  *
  * This helper wraps the internal decoder pool and can be called repeatedly as
  * `(chunk, reset)` for **sequential** incremental decoding, as long as calls
- * for a given dictionary ID are not interleaved or made concurrently.
+ * are not interleaved or made concurrently.
  *
  * Because it acquires and releases pooled decoders on every call, it does not
  * provide strong streaming guarantees under concurrency. For a robust
@@ -79,7 +79,7 @@ export declare function decompress(input: Uint8Array, options?: ZstdOptions): Pr
  *
  * @param input - The compressed Zstandard data.
  * @param reset - Whether to reset the decoder context before decompression (default: `false`).
- * @param options - Optional decompression options (e.g., dictionary, WASM path).
+ * @param options - Optional decompression options (e.g., WASM path).
  * @returns A promise that resolves with the decompressed output and number of input bytes consumed.
  *
  * @example
@@ -102,7 +102,7 @@ export declare function decompressStream(
  *
  * @param input - The compressed Zstandard data.
  * @param expectedSize - Optional expected size of the decompressed output, in bytes.
- * @param options - Optional decompression options (e.g., dictionary).
+ * @param options - Optional decompression options.
  * @returns The decompressed output buffer.
  *
  * @example
@@ -123,7 +123,7 @@ export declare function decompressSync(
  * {@link ZstdDecoder} instances yourself instead of going through the pooled
  * helpers such as {@link decompress} or {@link decompressStream}.
  *
- * @param options - Decoder configuration options (dictionary, WASM path, limits).
+ * @param options - Decoder configuration options (WASM path, limits).
  * @returns A promise that resolves to an initialized decoder instance.
  */
 export declare function createDecoder(options?: ZstdOptions): Promise<ZstdDecoder>;
@@ -198,7 +198,7 @@ export declare class ZstdCompressionStream {
 /**
  * Compress a buffer using Zstandard.
  * @param input - Uncompressed input.
- * @param options - Optional compression options (dictionary; level must be 1).
+ * @param options - Optional compression options (level must be 1).
  */
 export declare function compress(
   input: Uint8Array,

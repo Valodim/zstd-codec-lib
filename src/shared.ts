@@ -10,30 +10,18 @@ export const _internal = {
     maxSrcSize: 0,
     maxDstSize: 0,
   },
-  dictionaries: [] as string[],
 };
 
-// This is horrible tbh.
-const decoderPools = new Map<number, Map<number, ZstdDecoder>>();
-const poolLocks = new Map<number, boolean[]>();
-
+// Decoder pool: up to _MAX_POOL instances, lock state tracks in-flight use.
+const _MAX_POOL = 3;
+const decoderPool: ZstdDecoder[] = [];
+const poolLocks: boolean[] = [];
 
 let isInitialized = false;
 let cachedModule: WebAssembly.Module;
 
-const loadedDictionaries = new Map<number, Uint8Array>();
-
-function _createDecoderInstance(
-  dictionary?: Uint8Array | ArrayBuffer,
-): ZstdDecoder {
-  const dict =
-    dictionary instanceof Uint8Array
-      ? dictionary
-      : dictionary instanceof ArrayBuffer
-        ? new Uint8Array(dictionary)
-        : undefined;
-
-  const decoder = new ZstdDecoder({ ..._internal.buffer, dictionary: dict });
+function _createDecoderInstance(): ZstdDecoder {
+  const decoder = new ZstdDecoder({ ..._internal.buffer });
   decoder.init(cachedModule);
   return decoder;
 }
@@ -41,100 +29,41 @@ function _createDecoderInstance(
 export const setupZstdDecoder = async (options: {
   maxSrcSize?: number;
   maxDstSize?: number;
-  dictionaries?: string[];
 }) => {
   if (options.maxSrcSize) _internal.buffer.maxSrcSize = options.maxSrcSize;
   if (options.maxDstSize) _internal.buffer.maxDstSize = options.maxDstSize;
-
-  if (options.dictionaries) {
-    for (const url of options.dictionaries) {
-      const dict = await _loadResource(url);
-      const id = _getDictId(dict);
-      if (id > 0) loadedDictionaries.set(id, dict);
-    }
-  }
 };
 
-async function _acquireDecoder(
-  dictId: number = 0,
-  options?: ZstdOptions,
-): Promise<[ZstdDecoder, number, number]> {
+/**
+ * Returns [decoder, idx]. idx === -1 means the decoder is transient (pool
+ * was full) and the caller must call _destroy() when done.
+ */
+async function _acquireDecoder(): Promise<[ZstdDecoder, number]> {
   if (!cachedModule) {
     const module = _internal._loader!();
     cachedModule = module instanceof Promise ? await module : module;
   }
 
-  if (!decoderPools.has(dictId)) {
-    decoderPools.set(dictId, new Map());
-    poolLocks.set(dictId, []);
-  }
-
-  const pool = decoderPools.get(dictId)!;
-  const locks = poolLocks.get(dictId)!;
-  
-  for (let i = 0; i < locks.length; ++i) {
-    if (!locks[i]) {
-      locks[i] = true;
-      return [pool.get(i)!, i, dictId];
+  for (let i = 0; i < poolLocks.length; ++i) {
+    if (!poolLocks[i]) {
+      poolLocks[i] = true;
+      return [decoderPool[i], i];
     }
   }
 
-  const decoder = _createDecoderInstance(
-    dictId > 0 ? options?.dictionary || loadedDictionaries.get(dictId) : undefined,
-  );
+  const decoder = _createDecoderInstance();
 
-  if (locks.length > 2) return [decoder, -1, dictId];
+  if (poolLocks.length >= _MAX_POOL) return [decoder, -1];
 
-  const newIdx = locks.length;
-  pool.set(newIdx, decoder);
-  locks.push(true);
-  return [decoder, newIdx, dictId];
+  const newIdx = poolLocks.length;
+  decoderPool.push(decoder);
+  poolLocks.push(true);
+  return [decoder, newIdx];
 }
 
-function _releaseDecoder(idx: number, dictId: number): void {
-  const locks = poolLocks.get(dictId);
-  if (locks) locks[idx] = false;
+function _releaseDecoder(idx: number): void {
+  if (idx >= 0) poolLocks[idx] = false;
 }
-
-export function _pushToPool(
-  decoder: ZstdDecoder,
-  module: WebAssembly.Module,
-  dictId: number = 0,
-): void {
-  cachedModule = module;
-  if (!decoderPools.has(dictId)) {
-    decoderPools.set(dictId, new Map());
-    poolLocks.set(dictId, []);
-  }
-  const pool = decoderPools.get(dictId)!;
-  const locks = poolLocks.get(dictId)!;
-  pool.set(locks.length, decoder);
-  locks.push(false);
-}
-
-/**
- * Load resource as Uint8Array
- */
-const _loadResource = async (
-  resource: Uint8Array | ArrayBuffer | Request | string,
-): Promise<Uint8Array> => {
-  if (resource instanceof Uint8Array) return resource;
-  if (resource instanceof ArrayBuffer) return new Uint8Array(resource);
-  const response = await fetch(resource);
-  return new Uint8Array(await response.arrayBuffer());
-};
-
-const _getDictId = (input: Uint8Array): number => {
-  if (input.length < 6) return 0;
-  try {
-    const header = rzfh(input);
-    const id = typeof header == 'object' ? header.d : 0;
-    if (id > 0) loadedDictionaries.set(id, input);
-    return id;
-  } catch {
-    return 0;
-  }
-};
 
 export const createDecoder = async (
   options: ZstdOptions = {},
@@ -143,7 +72,7 @@ export const createDecoder = async (
     cachedModule = await _internal._loader!(options.wasmPath);
     isInitialized = true;
   }
-  return _createDecoderInstance(options.dictionary);
+  return _createDecoderInstance();
 };
 
 const _toUint8Array = (chunk: BufferSource): Uint8Array => {
@@ -171,7 +100,6 @@ export class ZstdDecompressionStream {
   constructor(options?: ZstdOptions) {
     let decoder: ZstdDecoder;
     let idx: number = -1;
-    let dictId: number = 0;
     // A temporary buffer to hold data until the header can be read.
     const initialBuffer: Uint8Array[] = [];
     let headerInfo: DZS = { d: 0, u: 0, e: -1 };
@@ -229,8 +157,7 @@ export class ZstdDecompressionStream {
           // initialBuffer and were never handed to the decoder — feeding only
           // the latest one drops the prefix and corrupts the stream.
           const buffered = _concatUint8Arrays(initialBuffer, bytesRead);
-          dictId = _getDictId(buffered);
-          [decoder, idx, dictId] = await _acquireDecoder(dictId, options);
+          [decoder, idx] = await _acquireDecoder();
 
           const result = decoder.decompressStream(buffered, true).buf;
           if (result.length > 0) {
@@ -254,12 +181,11 @@ export class ZstdDecompressionStream {
           } catch (er) {
             controller.error(new err(`dec err ${er}`));
           }
+        }
+        if (idx == -1) {
+          decoder?._destroy();
         } else {
-          if (idx == -1) {
-            decoder?._destroy();
-          } else {
-            _releaseDecoder(idx, dictId);
-          }
+          _releaseDecoder(idx);
         }
         controller.terminate();
       },
@@ -280,22 +206,20 @@ export const decompress = async (
 export const decompressStream = async (
   input: Uint8Array,
   reset = false,
-  options?: ZstdOptions,
+  _options?: ZstdOptions,
 ): Promise<StreamResult> => {
-  const dictId = _getDictId(input);
-  const [decoder, idx] = await _acquireDecoder(dictId, options);
+  const [decoder, idx] = await _acquireDecoder();
   const result = decoder.decompressStream(input, reset);
-  idx == -1 ? decoder._destroy() : _releaseDecoder(idx, dictId);
+  idx == -1 ? decoder._destroy() : _releaseDecoder(idx);
   return result;
 };
 
 export const decompressSync = (
   input: Uint8Array,
   expectedSize?: number,
-  options?: ZstdOptions,
+  _options?: ZstdOptions,
 ): Uint8Array => {
-  const dictId = _getDictId(input);
-  const decoder = decoderPools.get(dictId)?.get(0) || _createDecoderInstance(dictId > 0 ? options?.dictionary || loadedDictionaries.get(dictId) : undefined);
+  const decoder = decoderPool[0] || _createDecoderInstance();
   const result = decoder.decompressSync(input, expectedSize);
   return result;
 };

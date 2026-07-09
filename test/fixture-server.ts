@@ -34,11 +34,7 @@ const server = Bun.serve({
       }
     }
 
-    if (
-      pathname.startsWith('/dictionaries/') ||
-      pathname.startsWith('/edge-cases/') ||
-      pathname.startsWith('/dist/')
-    ) {
+    if (pathname.startsWith('/edge-cases/') || pathname.startsWith('/dist/')) {
       try {
         const filePath = pathname.startsWith('/dist/')
           ? join(TEST_DIR, '..', pathname.slice(1))

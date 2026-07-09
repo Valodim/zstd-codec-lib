@@ -18,9 +18,6 @@ export interface DecoderWasmExports extends BaseWasmExports {
   /** Creates a ZSTD decompression context */
   _initialize(): void;
 
-  /** Load a ZSTD dictionary for decompression */
-  loadDecoderDict(dictPtr: number, dictSize: number): number;
-
   /** Decompresses data synchronously */
   decompress(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number): number;
 
@@ -38,11 +35,8 @@ export interface CodecWasmExports extends DecoderWasmExports {
   /** Returns the address of the in/out stream-struct pair (16+16 bytes). */
   getInBufferPtr(): number;
 
-  /** Reset compression context for a fresh frame at level 1-3. */
+  /** Reset compression context for a fresh frame. */
   initCompressor(level: number): number;
-
-  /** Load a compression dictionary. */
-  loadEncoderDict(dictPtr: number, dictSize: number): number;
 
   /** Single-shot compress at a given level. */
   compress(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number, level: number): number;
@@ -55,9 +49,6 @@ export interface CodecWasmExports extends DecoderWasmExports {
  * Configuration options for the ZSTD encoder.
  */
 export interface EncoderOptions {
-  /** Compression dictionary */
-  dictionary?: Uint8Array;
-
   /** Compression level. Only level 1 is supported; any other value throws.
    *  Defaults to 1. */
   level?: 1;
@@ -78,9 +69,6 @@ export interface CodecOptions extends EncoderOptions {
  * Configuration options for the ZSTD decoder.
  */
 export interface DecoderOptions {
-  /** Dictionary to use for decompression */
-  dictionary?: Uint8Array;
-
   /** Maximum (compressed) buffer size in bytes */
   maxSrcSize?: number;
 
@@ -92,9 +80,6 @@ export interface DecoderOptions {
  * Options for decoder functions and streams.
  */
 export interface ZstdOptions {
-  /** Dictionary to use for decompression */
-  dictionary?: Uint8Array | ArrayBuffer;
-
   /** Path to the WASM module */
   wasmPath?: string;
 }

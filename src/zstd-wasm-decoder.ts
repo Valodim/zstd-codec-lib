@@ -5,7 +5,7 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
  * flags — see LDFLAGS_BASE):
  *
  *   [stack | stream structs | rodata | CCtx workspace | DCtx (~96 KB) |
- *    ddict ptr (4b) | optional dict (≤ 2 MB) | src buf (2 MB) | dst buf ]
+ *    src buf (2 MB) | dst buf ]
  *
  * Total 12 MB, 64 KB stack. The decoder caps maxWindowSize at 4 MB + 1
  * (ZSTD_WASM_MAX_WINDOW_SIZE — level 9, windowLog 22) so the dst buffer cap
@@ -17,7 +17,7 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
  *
  * Memory management strategy: JS owns srcPtr / dstPtr and resets them per
  * decompression instead of calling free. The bump-style `malloc` is only
- * used at init for the dict + src buffer. Inputs/outputs larger than the
+ * used at init for the src buffer. Inputs/outputs larger than the
  * sync buffers automatically fall back to streaming decompression.
  *
  * Level-9 memory budget reference (windowLog 22 → 4 MB window):
@@ -49,7 +49,6 @@ class ZstdDecoder {
   private _streamInputStructPtr: number = 0;
   private _streamOutputStructPtr: number = 0;
 
-  private readonly _dictionary?: Uint8Array;
   private readonly _maxSrcSize: number = 0;
   private readonly _maxDstSize: number = 0;
 
@@ -61,7 +60,6 @@ class ZstdDecoder {
   private _maxDstBuf: number = _MAX_DST_BUF_DEFAULT;
 
   constructor(options: DecoderOptions = {}) {
-    this._dictionary = options.dictionary
     // Coalesce undefined → 0: a bare `new ZstdDecoder()` must still get the
     // finite floor, not Math.max(undefined, …) === NaN (which disables the
     // size/decompression-bomb guards entirely).
@@ -98,16 +96,6 @@ class ZstdDecoder {
 
     this._exports._initialize();
 
-    // Initialize dictionary if provided
-    if (this._dictionary) {
-      const _dictLen = this._dictionary.length;
-      if (_dictLen > _MAX_SRC_BUF) {
-        throw new err('dict>2mb');
-      }
-      const dictPtr = this._exports.malloc(_dictLen);
-      this._HEAPU8.set(this._dictionary as Uint8Array, dictPtr);
-      this._exports.loadDecoderDict(dictPtr, _dictLen);
-    }
     this._srcPtr = this._exports.malloc(_MAX_SRC_BUF);
     this._dstPtr = this._srcPtr + _MAX_SRC_BUF; // We don't malloc dst buf. Its where dst buf starts. Zstd will malloc
     // Cap the sync-decompression buffer at whatever the linear memory

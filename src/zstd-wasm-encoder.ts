@@ -22,8 +22,6 @@ import { err, _concatUint8Arrays } from './utils.js';
  * ║            │   ZSTD_CCtx + cwksp workspace      │            ║
  * ║            │   (~1 MB at level 1)               │            ║
  * ║            ├────────────────────────────────────┤            ║
- * ║            │   Dictionary (optional)            │            ║
- * ║            ├────────────────────────────────────┤            ║
  * ║            │   Source buffer (compressing)      │            ║
  * ║            │   Destination buffer               │            ║
  * ║            │     For compress:    ~src + bound  │            ║
@@ -55,7 +53,6 @@ class ZstdEncoder {
   private _HEAPU8!: Uint8Array;
   private _HEAPU32!: Uint32Array;
 
-  private readonly _dictionary?: Uint8Array;
   private readonly _level: number;
   private readonly _maxSrcSize: number;
 
@@ -71,7 +68,6 @@ class ZstdEncoder {
   private _flushAt = 0;
 
   constructor(options: EncoderOptions = {}) {
-    this._dictionary = options.dictionary;
     this._level = _assertLevel1(options.level ?? 1);
     this._maxSrcSize = options.maxSrcSize ?? _DEFAULT_MAX_SRC;
   }
@@ -97,23 +93,10 @@ class ZstdEncoder {
     this._inStructPtr = this._exports.getInBufferPtr();
     this._outStructPtr = this._inStructPtr + 16;
 
-    // Optional compression dict (persistent across resets).
-    if (this._dictionary) {
-      const len = this._dictionary.length;
-      const dictPtr = this._exports.malloc(len);
-      // malloc returns 0 (NULL) when the request doesn't fit the fixed,
-      // non-growable linear memory. Writing at offset 0 would clobber the
-      // stack, so fail loudly instead.
-      if (!dictPtr) throw new err('oom: dict exceeds wasm memory');
-      this._HEAPU8.set(this._dictionary, dictPtr);
-      const r = this._exports.loadEncoderDict(dictPtr, len);
-      if (r < 0) throw new err(`dict load err ${r >>> 0}`);
-    }
-
     this._srcPtr = this._exports.malloc(this._maxSrcSize);
     this._dstCap = _compressBound(this._maxSrcSize);
     this._dstPtr = this._exports.malloc(this._dstCap);
-    // A 0 pointer means the configured maxSrcSize (+ dict) doesn't fit the
+    // A 0 pointer means the configured maxSrcSize doesn't fit the
     // 12 MB linear memory. Surface it now rather than corrupting low memory
     // on the first compress.
     if (!this._srcPtr || !this._dstPtr) {
@@ -137,7 +120,7 @@ class ZstdEncoder {
     if (srcSize > this._maxSrcSize) return this.compressStream(input, true);
 
     // Buffers stay where _initialize left them; reset heap_cursor so
-    // future malloc()s (e.g. dict reload) don't accumulate forever.
+    // future malloc()s don't accumulate forever.
     // For sync compress we don't need to pb() since we already pre-allocated.
     this._HEAPU8.set(input, this._srcPtr);
     const lvl = _assertLevel1(level ?? this._level);
@@ -273,7 +256,7 @@ class ZstdEncoder {
     return _concatUint8Arrays(outChunks, outTotal);
   }
 
-  /** Reset for a fresh frame; keeps the loaded dictionary. */
+  /** Reset for a fresh frame. */
   reset(level?: number): void {
     const r = this._exports.initCompressor(_assertLevel1(level ?? this._level));
     if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
