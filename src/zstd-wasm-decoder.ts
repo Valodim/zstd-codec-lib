@@ -40,7 +40,6 @@ const _MAX_DST_BUF_DEFAULT = 9830464; // 9.37 MB
 // room for the streaming inBuff/outBuff that ZSTD_decompressStream may
 // allocate via malloc when sync mode falls back.
 const _DST_BUF_TAIL_MARGIN = 1048576; // 1 MB
-const _STREAM_RESULT: StreamResult = { buf: new Uint8Array(0), in_offset: 0 };
 class ZstdDecoder {
   private _exports!: CodecWasmExports;
   private _HEAPU8!: Uint8Array;
@@ -177,7 +176,9 @@ class ZstdDecoder {
       this._exports.setHeapEnd(this._dstPtr);
     }
     const inLen = input.length || 0;
-    if (inLen == 0) return _STREAM_RESULT;
+    // Fresh object per call — a shared singleton could be mutated by a caller
+    // and corrupt every other empty-input result.
+    if (inLen == 0) return { buf: new Uint8Array(0), in_offset: 0 };
 
     const output: Uint8Array[] = [];
 
