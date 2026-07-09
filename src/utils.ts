@@ -38,6 +38,14 @@ export const _fss = (dat: Uint8Array): number => {
 
 // Read Zstandard frame header
 export const rzfh = (dat: Uint8Array): number | DZS => {
+  // Skippable frame (magic 0x184D2A50..0x184D2A5F — low nibble is the variant).
+  // It carries no window/content, so return a benign descriptor: the streaming
+  // header-probe must not reject it (the wasm decoder skips it just fine), and
+  // a real frame may follow. Without this, a stream that *begins* with a
+  // skippable frame threw "bad zstd dat" during probing.
+  if ((dat[0] & 0xf0) == 0x50 && dat[1] == 0x2a && dat[2] == 0x4d && dat[3] == 0x18) {
+    return { d: 0, u: 0, e: 0 };
+  }
   if ((dat[0] | (dat[1] << 8) | (dat[2] << 16)) == 0x2fb528 && dat[3] == 253) {
     // Zstandard frame
     const flg = dat[4];

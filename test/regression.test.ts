@@ -502,6 +502,40 @@ describe('skippable frames are skipped', () => {
     expect(sha(await decompress(cat))).toBe(sha(Buffer.concat([a, b])));
   });
 
+  test('rzfh accepts skippable-frame magic (all 16 variants)', async () => {
+    const { rzfh } = await import('../src/utils.ts');
+    for (let v = 0; v <= 0xf; v++) {
+      const frame = skippable(Buffer.from('meta'), v);
+      const info = rzfh(frame);
+      expect(typeof info).toBe('object');
+      expect((info as { u: number }).u).toBe(0); // no window → never trips the cap
+    }
+  });
+
+  test('streaming: stream that BEGINS with a skippable frame decodes', async () => {
+    const { createDecoder, ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+
+    // Big enough to force the streaming path (over minRecvSize), so the JS-side
+    // header probe (rzfh) runs on the leading skippable frame.
+    const payload = Buffer.from('y'.repeat(400 * 1024));
+    const frame = Buffer.from(zlib.zstdCompressSync(payload, {}));
+    const cat = Buffer.concat([skippable(Buffer.from('leading metadata'), 3), frame]);
+
+    const stream = new ZstdDecompressionStream();
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    void writer.write(cat);
+    void writer.close();
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    expect(sha(Buffer.concat(chunks))).toBe(sha(payload));
+  });
+
   test('streaming: skippable header split across chunk boundaries', async () => {
     const { createDecoder, ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
     await createDecoder();
