@@ -33,11 +33,20 @@ _internal._loader = async () => {
       new Blob([
         typeof (Uint8Array as any).fromBase64 === 'function'
           ? (Uint8Array as any).fromBase64(WASM_BASE64)
-          : new TextEncoder().encode(atob(WASM_BASE64)).buffer,
+          : _b64ToBytes(WASM_BASE64),
       ])
         .stream()
         .pipeThrough(new DecompressionStream('deflate-raw')),
     ).arrayBuffer(),
   );
 };
+function _b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return bytes;
+}
 const WASM_BASE64 = '__WASM_BASE64_PLACEHOLDER__';

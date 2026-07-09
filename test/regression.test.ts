@@ -289,6 +289,36 @@ describe('dictionary-referencing frames are rejected', () => {
 });
 
 /**
+ * Regression — inlined-WASM base64 fallback for runtimes without
+ * `Uint8Array.fromBase64` (Chrome < 140, Safari < 18.2, Firefox < 133 — all
+ * inside the package's browserslist range). The old fallback,
+ * `new TextEncoder().encode(atob(WASM_BASE64))`, UTF-8-encoded the latin1 byte
+ * string, so every byte >= 0x80 became two bytes and the deflate-raw'd wasm blob
+ * failed to inflate/compile. The fix decodes via a charCodeAt loop. Exercises the
+ * real path by deleting Uint8Array.fromBase64 before the loader runs; the inlined
+ * bundle carries its own shared.ts state, so the node entrypoint's cache is
+ * independent and the loader really fires here.
+ */
+describe('inlined-WASM base64 fallback (no Uint8Array.fromBase64)', () => {
+  test('decodes to a valid wasm module and round-trips a frame', async () => {
+    const original = (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
+    // biome-ignore lint/performance/noDelete: forcing the fallback branch
+    delete (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
+    try {
+      const { createDecoder, decompress } = await import('../dist/esm/index.inlined.js');
+      await createDecoder(); // triggers the inlined loader → fallback decode + compile
+      const data = Buffer.from('inlined fallback base64 regression '.repeat(64));
+      const compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
+      expect(hash(Buffer.from(await decompress(compressed)))).toBe(hash(data));
+    } finally {
+      if (original !== undefined) {
+        (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64 = original;
+      }
+    }
+  });
+});
+
+/**
  * Formerly malloc-bounds.test.ts — the wasm bump allocator over fixed,
  * non-growable memory must refuse any request that would run past the end of
  * memory by returning NULL (0). The cursor is driven to the boundary via
