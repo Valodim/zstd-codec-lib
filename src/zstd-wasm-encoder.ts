@@ -30,7 +30,6 @@ import { err, _concatUint8Arrays } from './utils.js';
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-const _CODEC_PB_RESET = 262144;
 const _DEFAULT_MAX_SRC = 4 * 1024 * 1024; // 4 MiB
 
 /** Only compression level 1 is supported. The wasm is built level-1-only
@@ -269,5 +268,5 @@ class ZstdEncoder {
 }
 
 export default ZstdEncoder;
-export { ZstdEncoder, _CODEC_PB_RESET };
+export { ZstdEncoder };
 export type { EncoderOptions } from './types.js';

@@ -23,9 +23,8 @@ const TYPES_DIR = join(DIST_DIR, 'types');
 const BUILD_DIR = join(PKG_DIR, 'build');
 const WASM_PATH = join(BUILD_DIR, 'zstd.wasm');
 const WASM_PERF_PATH = join(BUILD_DIR, 'zstd-perf.wasm');
-const ROOT_DIR = join(PKG_DIR, '..', '..');
-const LICENSE_PATH = join(ROOT_DIR, 'LICENSE');
-const README_PATH = join(ROOT_DIR, 'README.md');
+const LICENSE_PATH = join(PKG_DIR, 'LICENSE');
+const README_PATH = join(PKG_DIR, 'README.md');
 
 const PREP = process.argv.includes('--prep');
 

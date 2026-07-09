@@ -29,7 +29,7 @@ OUTPUT_PERF = $(OUTPUT_DIR)/zstd-perf.wasm
 CFLAGS = --target=wasm32
 
 CFLAGS += -nostdlib
-CFLAGS += -I$(BIN_DIR)/include -I$(BIN_DIR) -I../../vendor/zstd/lib
+CFLAGS += -I$(BIN_DIR)/include -I$(BIN_DIR) -Ivendor/zstd/lib
 CFLAGS += -ffreestanding
 CFLAGS += -msimd128
 CFLAGS += -msign-ext

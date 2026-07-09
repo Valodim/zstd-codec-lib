@@ -512,7 +512,7 @@ describe('Streaming decompression', () => {
   });
 
   describe('extreme streaming tests', () => {
-    test('256MB random noise at level 19', async () => {
+    test('16MB random noise at level 9', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
       const compressed = compress(data, { level: 9 });
 
@@ -520,7 +520,7 @@ describe('Streaming decompression', () => {
       expect(hash(decompressed)).toBe(hash(data));
     }, 300000); // 5 minute timeout
 
-    test('256MB random noise - streamed in 0.1% increments', async () => {
+    test('256MB random noise - streamed in 1% increments', async () => {
       if (!decompressAdapter.decompressStream) {
         console.log('Skipping chunked streaming test: decompressStream not available');
         return;
@@ -529,7 +529,7 @@ describe('Streaming decompression', () => {
       const data = randomBuffer(256 * 1024 * 1024);
       const compressed = compress(data, { level: 9 });
 
-      // 0.1% of the compressed data per chunk
+      // 1% of the compressed data per chunk
       const chunkSize = Math.max(1, Math.floor(compressed.length * 0.01));
       const outputs: Buffer[] = [];
       console.log(`Streaming ${compressed.length} bytes in ${chunkSize}-byte chunks`);
@@ -543,7 +543,7 @@ describe('Streaming decompression', () => {
       const decompressed = Buffer.concat(outputs);
       expect(hash(decompressed)).toBe(hash(data));
     }, 300000); // 5 minute timeout
-    test('256MB random noise - corrupted (skipped bytes)', async () => {
+    test('16MB random noise - corrupted (skipped bytes)', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
       const compressed = compress(data, { level: 9 });
 
