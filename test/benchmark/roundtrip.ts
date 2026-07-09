@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { constants, zstdCompressSync } from 'node:zlib';
-import { createDecoder, decompressSync, ZstdDecoder } from '../../dist/esm/index.node.js';
+import { createCodec, decompressSync, ZstdCodec } from '../../dist/esm/index.node.js';
 import { hash } from '../lib/utils.js';
 
 const dir = import.meta.dirname || process.cwd();
 const testData = readFileSync(join(dir, '../data/test.json'));
 const expectedHash = hash(testData);
 
-await createDecoder();
+await createCodec();
 
 const zstdConfig = {
   [constants.ZSTD_c_compressionLevel]: 19,
@@ -40,7 +40,7 @@ const wasmModule = new WebAssembly.Module(
   readFileSync(new URL('../../dist/esm/zstd-perf.wasm', import.meta.url)),
 );
 
-const decoder = new ZstdDecoder();
+const decoder = new ZstdCodec();
 decoder.init(wasmModule);
 
-validate(decoder.decompressSync(compressed), 'ZstdDecoder instance (decompressSync)');
+validate(decoder.decompressSync(compressed), 'ZstdCodec instance (decompressSync)');

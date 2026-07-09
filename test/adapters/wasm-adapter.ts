@@ -11,7 +11,7 @@ const variantMap: Record<string, string> = {
 };
 
 const buildFile = variantMap[TEST_VARIANT] || 'index.node';
-const { createDecoder, decompressSync } = await import(`../../dist/esm/${buildFile}.js`);
+const { createCodec, decompressSync } = await import(`../../dist/esm/${buildFile}.js`);
 
 export interface WasmDecoderAdapter {
   decompress(data: Buffer | Uint8Array, options?: ZstdOptions): Promise<Buffer>;
@@ -25,5 +25,5 @@ export const wasmAdapter: WasmDecoderAdapter = {
 };
 
 export async function initWasmAdapter(): Promise<void> {
-  await createDecoder();
+  await createCodec();
 }

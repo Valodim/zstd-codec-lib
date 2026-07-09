@@ -6,17 +6,17 @@
 </head>
 <body>
   <script type="module">
-    import { ZstdDecoder } from 'http://localhost:42069/dist/esm/index.web.js';
+    import { ZstdCodec } from 'http://localhost:42069/dist/esm/index.web.js';
 
     // Load and compile WASM module once
     const wasmUrl = 'http://localhost:42069/dist/esm/zstd.wasm';
     const wasmModule = await WebAssembly.compileStreaming(fetch(wasmUrl));
 
-    const mainDecoder = new ZstdDecoder({
-      maxSrcSize: 512 * 1024 * 1024,
-      maxDstSize: 512 * 1024 * 1024
+    const mainDecoder = new ZstdCodec({
+      maxCompressedSize: 512 * 1024 * 1024,
+      maxDecompressedSize: 512 * 1024 * 1024
     });
-    await mainDecoder.init(wasmModule);
+    mainDecoder.init(wasmModule);
 
     // Expose API
     window.ZstdWasm = {

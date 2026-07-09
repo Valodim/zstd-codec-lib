@@ -90,14 +90,14 @@ LDFLAGS += -Wl,--stack-first
 LDFLAGS += -Wl,--merge-data-segments
 LDFLAGS += -Wl,--print-map
 
-# Lvl1 codec memory layout (12 MB). Two instances of this module exist
-# at runtime — one decoder-only, one encoder-only — so the budget must
-# cover whichever is larger.
-#   Encoder (the bigger consumer):
+# Lvl1 codec memory layout (12 MB). A single instance of this module serves
+# both directions (compress and decompress time-share one working arena; see
+# src/zstd-wasm-codec.ts), so the budget must cover whichever op is larger.
+#   Compress (the bigger consumer):
 #     64KB stack + ~256KB rodata/static + ~1MB CCtx workspace +
 #     4MB src buf (_DEFAULT_MAX_SRC) + ~4.1MB dst buf (compressBound(4MB))
 #     ≈ ~10 MB. Round up to 12 MB for headroom.
-#   Decoder: 64KB stack + ~256KB rodata + ~1MB CCtx (still allocated by
+#   Decompress: 64KB stack + ~256KB rodata + ~1MB CCtx (also allocated by
 #     _initialize) + ~96KB DCtx + 2MB src + ~4.5MB dst (4MB window +
 #     3*128KB blocks + margin) ≈ ~8 MB; fits.
 # global-base must be >= stack-size when --stack-first is used.

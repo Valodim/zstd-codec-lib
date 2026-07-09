@@ -30,16 +30,16 @@ describe('encoder fails cleanly when buffers do not fit', () => {
     new WebAssembly.Module(readFileSync(join(__dirname, '../dist/esm/zstd-perf.wasm')));
 
   test('over-budget maxSrcSize throws OOM at init, not a memory trap', async () => {
-    const { ZstdEncoder } = await import('../src/zstd-wasm-encoder.ts');
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
     // 32 MB src (+ its compressBound dst) cannot fit the fixed 12 MB memory.
-    expect(() => new ZstdEncoder({ maxSrcSize: 32 * 1024 * 1024 }).init(codecModule())).toThrow(
+    expect(() => new ZstdCodec({ maxSrcSize: 32 * 1024 * 1024 }).init(codecModule())).toThrow(
       /oom/i,
     );
   });
 
   test('within-budget encoder initializes and round-trips (workspace committed)', async () => {
-    const { ZstdEncoder } = await import('../src/zstd-wasm-encoder.ts');
-    const enc = new ZstdEncoder({ level: 1 }).init(codecModule());
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+    const enc = new ZstdCodec({ level: 1 }).init(codecModule());
     // > 64 bytes, so the committed level-1 (windowLog-19) workspace is used —
     // the path that corrupted memory before the workspace was committed at init.
     const src = Buffer.from('regression: workspace committed at init. '.repeat(256));
@@ -50,34 +50,40 @@ describe('encoder fails cleanly when buffers do not fit', () => {
 
 /**
  * Regression — commit "fix(decoder): default size limits to a finite value
- * instead of NaN". A bare `new ZstdDecoder()` used to compute
+ * instead of NaN". A bare `new ZstdCodec()` used to compute
  * Math.max(undefined, floor) = NaN, and `x > NaN` is always false, silently
  * disabling both the input-size guard and the decompression-bomb output guard.
  */
 describe('decoder default size limits are finite (not NaN)', () => {
   // _MAX_DST_BUF_DEFAULT (9_830_464) * 64 — the finite floor the constructor
-  // must apply when no options are given.
+  // must apply when no decompression-guard options are given.
   const FLOOR = 9830464 * 64;
 
-  test('bare new ZstdDecoder() applies the finite floor, never NaN', async () => {
-    const { ZstdDecoder } = await import('../src/zstd-wasm-decoder.ts');
-    const dec = new ZstdDecoder() as unknown as { _maxSrcSize: number; _maxDstSize: number };
-    expect(Number.isNaN(dec._maxSrcSize)).toBe(false);
-    expect(Number.isNaN(dec._maxDstSize)).toBe(false);
-    expect(dec._maxSrcSize).toBe(FLOOR);
-    expect(dec._maxDstSize).toBe(FLOOR);
+  test('bare new ZstdCodec() applies the finite floor, never NaN', async () => {
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+    const dec = new ZstdCodec() as unknown as { _maxDecSrc: number; _maxDecDst: number };
+    expect(Number.isNaN(dec._maxDecSrc)).toBe(false);
+    expect(Number.isNaN(dec._maxDecDst)).toBe(false);
+    expect(dec._maxDecSrc).toBe(FLOOR);
+    expect(dec._maxDecDst).toBe(FLOOR);
   });
 
   test('explicit limits below the floor clamp up; larger ones win', async () => {
-    const { ZstdDecoder } = await import('../src/zstd-wasm-decoder.ts');
-    type Limits = { _maxSrcSize: number; _maxDstSize: number };
-    const small = new ZstdDecoder({ maxSrcSize: 1, maxDstSize: 1 }) as unknown as Limits;
-    expect(small._maxSrcSize).toBe(FLOOR);
-    expect(small._maxDstSize).toBe(FLOOR);
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+    type Limits = { _maxDecSrc: number; _maxDecDst: number };
+    const small = new ZstdCodec({
+      maxCompressedSize: 1,
+      maxDecompressedSize: 1,
+    }) as unknown as Limits;
+    expect(small._maxDecSrc).toBe(FLOOR);
+    expect(small._maxDecDst).toBe(FLOOR);
     const big = FLOOR * 2;
-    const large = new ZstdDecoder({ maxSrcSize: big, maxDstSize: big }) as unknown as Limits;
-    expect(large._maxSrcSize).toBe(big);
-    expect(large._maxDstSize).toBe(big);
+    const large = new ZstdCodec({
+      maxCompressedSize: big,
+      maxDecompressedSize: big,
+    }) as unknown as Limits;
+    expect(large._maxDecSrc).toBe(big);
+    expect(large._maxDecDst).toBe(big);
   });
 });
 
@@ -115,8 +121,8 @@ describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
   }
 
   beforeAll(async () => {
-    const { createDecoder } = await import('../dist/esm/index.node.js');
-    await createDecoder(); // warm the cached wasm module so decompressSync works
+    const { createCodec } = await import('../dist/esm/index.node.js');
+    await createCodec(); // warm the cached wasm module so decompressSync works
     data = makeCompressible(SIZE);
     compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
     expect(data.length).toBeGreaterThan(10 * 1024 * 1024);
@@ -163,8 +169,8 @@ describe('dictionary-referencing frames are rejected', () => {
   });
 
   test('decompressSync() fails likewise', async () => {
-    const { decompressSync, createDecoder } = await import('../dist/esm/index.node.js');
-    await createDecoder(); // ensure the wasm module is cached
+    const { decompressSync, createCodec } = await import('../dist/esm/index.node.js');
+    await createCodec(); // ensure the wasm module is cached
     expect(() => decompressSync(dictFrame)).toThrow();
   });
 });
@@ -186,8 +192,8 @@ describe('inlined-WASM base64 fallback (no Uint8Array.fromBase64)', () => {
     // delete to force the fallback branch (no Uint8Array.fromBase64)
     delete (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
     try {
-      const { createDecoder, decompress } = await import('../dist/esm/index.inlined.js');
-      await createDecoder(); // triggers the inlined loader → fallback decode + compile
+      const { createCodec, decompress } = await import('../dist/esm/index.inlined.js');
+      await createCodec(); // triggers the inlined loader → fallback decode + compile
       const data = Buffer.from('inlined fallback base64 regression '.repeat(64));
       const compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
       expect(hash(Buffer.from(await decompress(compressed)))).toBe(hash(data));
@@ -267,8 +273,8 @@ describe('skippable frames are skipped', () => {
   };
 
   test('one-shot: skippable frame mid-concatenation is dropped', async () => {
-    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+    await createCodec();
 
     const a = Buffer.from('AAAA'.repeat(500));
     const b = Buffer.from('BBBB'.repeat(500));
@@ -291,8 +297,8 @@ describe('golden decompression — exact output bytes', () => {
 
   for (const file of ['block-128k.zst', 'zeroSeq_2B.zst']) {
     test(`${file} decodes byte-identical to node:zlib`, async () => {
-      const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-      await createDecoder();
+      const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+      await createCodec();
       const comp = readFileSync(join(GOLDEN_DIR, file));
       const expected = Buffer.from(zlib.zstdDecompressSync(comp));
       expect(hash(Buffer.from(await decompress(comp)))).toBe(hash(expected));
@@ -331,8 +337,8 @@ describe('size-hint parsing boundaries', () => {
   });
 
   test('concatenated frames exceeding the sync dst buffer stay safe', async () => {
-    const { createDecoder, decompress, decompressSync } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress, decompressSync } = await import('../dist/esm/index.node.js');
+    await createCodec();
 
     // Each frame declares only ~1 MB (well under the ~9.4 MB sync buffer), but
     // the concatenation totals 12 MB — _fss sees only the first frame's size.
@@ -367,8 +373,8 @@ describe('hostage-byte tail-drain — no truncation at staging-buffer multiples'
   const STAGE = 917501;
 
   test('high-ratio frames around 1–4× the staging stride round-trip', async () => {
-    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+    await createCodec();
 
     for (const k of [1, 2, 3, 4]) {
       for (const delta of [-2, -1, 0, 1, 2]) {
@@ -410,8 +416,8 @@ describe('truncated frames throw on the one-shot APIs', () => {
   }
 
   test('declared-content-size frame, tail truncated → decompress() throws', async () => {
-    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+    await createCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = Buffer.from(zlib.zstdCompressSync(data, {}));
     const truncated = frame.subarray(0, frame.length - 20);
@@ -419,8 +425,8 @@ describe('truncated frames throw on the one-shot APIs', () => {
   });
 
   test('unknown-content-size frame, tail truncated → decompress() throws', async () => {
-    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+    await createCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = await unknownSizeFrame(data);
     const truncated = frame.subarray(0, frame.length - 20);
@@ -428,8 +434,8 @@ describe('truncated frames throw on the one-shot APIs', () => {
   });
 
   test('unknown-content-size frame, tail truncated → decompressSync() throws', async () => {
-    const { createDecoder, decompressSync } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompressSync } = await import('../dist/esm/index.node.js');
+    await createCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = await unknownSizeFrame(data);
     const truncated = frame.subarray(0, frame.length - 20);
@@ -437,8 +443,8 @@ describe('truncated frames throw on the one-shot APIs', () => {
   });
 
   test('a complete frame still round-trips (no false positive)', async () => {
-    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
-    await createDecoder();
+    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
+    await createCodec();
     const data = mk(3 * 1024 * 1024);
     for (const frame of [
       Buffer.from(zlib.zstdCompressSync(data, {})),

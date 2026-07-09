@@ -48,17 +48,54 @@ describe('high-level compress/decompress', () => {
   }
 });
 
-describe('ZstdEncoder direct API', () => {
+describe('ZstdCodec direct API', () => {
   for (const level of LEVELS) {
     test(`compressSync @ level ${level}`, async () => {
       const src = txt(200);
-      const enc = await (await import('../dist/esm/index.node.js')).createEncoder({ level });
+      const enc = await (await import('../dist/esm/index.node.js')).createCodec({ level });
       const out = enc.compressSync(src);
       expect(out.length).toBeLessThan(src.length / 2);
       const decoded = await decompress(out);
       expect(bufEq(decoded, src)).toBe(true);
     });
   }
+});
+
+/**
+ * The combined codec times-share one 12 MB buffer between compress and
+ * decompress on a single instance. This exercises exactly the interleaving
+ * that could corrupt shared heap state: streaming-compress (which lazily
+ * allocates CStream staging in the arena) → a large decode that overwrites
+ * that region → streaming-compress again on the SAME instance.
+ */
+describe('single-instance compress↔decompress interleave', () => {
+  test('sync + streaming round-trips interleave cleanly on one instance', async () => {
+    const codec = await (
+      await import('../dist/esm/index.node.js')
+    ).createCodec({
+      level: 1,
+      maxSrcSize: 1 * 1024 * 1024, // small, so >1 MB inputs take the streaming path
+    });
+
+    // Distinct payloads so a stale-buffer bug would surface as a mismatch.
+    const small = txt(50); // sync compress path
+    const bigText = txt(200_000); // ~9 MB → streaming compress + streaming decode
+    const bigRandom = new Uint8Array(randomBytes(3 * 1024 * 1024)); // streaming, incompressible
+
+    const rt = (src: Uint8Array): void => {
+      const comp = codec.compressSync(src);
+      const back = codec.decompressSync(comp);
+      expect(bufEq(back, src)).toBe(true);
+    };
+
+    // Alternate directions and sizes repeatedly on the one instance.
+    rt(small);
+    rt(bigText); // streaming compress, then a large streaming decode
+    rt(small); // sync compress right after a big decode (stale-staging guard)
+    rt(bigRandom);
+    rt(bigText);
+    rt(small);
+  });
 });
 
 describe('host zstd cross-decode', () => {

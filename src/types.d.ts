@@ -52,38 +52,31 @@ export interface CodecWasmExports extends DecoderWasmExports {
 }
 
 /**
- * Configuration options for the ZSTD encoder.
+ * Configuration options for the combined ZSTD codec (compress + decompress).
  */
-export interface EncoderOptions {
+export interface CodecOptions {
   /** Compression level. Only level 1 is supported; any other value throws.
    *  Defaults to 1. */
   level?: 1;
 
-  /** Maximum (uncompressed) input buffer size for sync compression */
+  /** Maximum (uncompressed) input for one sync compress. Sizes the compress
+   *  buffers; larger inputs fall back to streaming. Defaults to 4 MiB. */
   maxSrcSize?: number;
-}
 
-/**
- * Options for high-level codec API surface.
- */
-export interface CodecOptions extends EncoderOptions {
+  /** Decompression-bomb guard: maximum compressed input accepted. Defaults to
+   *  a large finite floor. */
+  maxCompressedSize?: number;
+
+  /** Decompression-bomb guard: maximum decompressed output produced. Defaults
+   *  to a large finite floor. */
+  maxDecompressedSize?: number;
+
   /** Path to the WASM module (overrides default loader URL) */
   wasmPath?: string;
 }
 
 /**
- * Configuration options for the ZSTD decoder.
- */
-export interface DecoderOptions {
-  /** Maximum (compressed) buffer size in bytes */
-  maxSrcSize?: number;
-
-  /** Maximum (decompressed) buffer size in bytes */
-  maxDstSize?: number;
-}
-
-/**
- * Options for decoder functions and streams.
+ * Options for codec helper functions.
  */
 export interface ZstdOptions {
   /** Path to the WASM module */

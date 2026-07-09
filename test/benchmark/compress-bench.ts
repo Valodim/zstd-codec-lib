@@ -165,7 +165,7 @@ const smallTarget = readFileSync(SMALL_TARGET);
 
 // Pre-warm wasm codec pools. For decoders the pool is only populated via the
 // async decompress() path, so we round-trip a tiny buffer once to seed the
-// pool — otherwise decompressSync constructs a fresh ZstdDecoder on every
+// pool — otherwise decompressSync constructs a fresh ZstdCodec on every
 // call (~1ms), which dominates small-payload timings.
 const seed = Buffer.from('seed');
 await setupZstdCodec({ level: 1 });

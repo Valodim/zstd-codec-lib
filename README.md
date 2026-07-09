@@ -11,13 +11,13 @@ Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor 
 | **Zero deps**        | No runtime dependencies (excluding build); compiled from source using latest clang & binaryen                                                                                        |
 
 #### Implementation notes:
-- Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/bin/zstd_wasm_full.c), avoiding heap growth entirely. The buffer is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/src/zstd-wasm-decoder.ts) to handle the maximum memory required by a level-9 frame (4 MB decoder window).
+- Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/bin/zstd_wasm_full.c), avoiding heap growth entirely. A single WebAssembly instance serves both compression and decompression, time-sharing [one 12 MB buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/src/zstd-wasm-codec.ts) that is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/src/zstd-wasm-codec.ts) to handle the maximum memory required by a level-9 frame (4 MB decoder window).
 - For use in browsers, the module is asynchronously compiled & cached at page load.
 - Only the `fast` (lvl 1) strategy is pulled from upstream — heavier strategies (`dfast`/`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported (any `level` other than `1` throws).
 
 ## Decompression
 ```typescript
-import { decompress, decompressSync, createDecoder } 
+import { decompress, decompressSync, createCodec } 
 from 'zstd-wasm-codec'; // Default (Node/browser - automatically inferred)
 
 import { ... } // For strict CSP policies (no unsafe-eval for WASM)
@@ -36,10 +36,11 @@ const data: Uint8Array = await decompress(compressedData);
 // 2. Synchronous decompression (buffer already in memory)
 const out: Uint8Array = decompressSync(compressedData);
 
-// 3. Reusable decoder instance (avoids re-acquiring from the pool)
-const decoder = await createDecoder();
-const result1: Uint8Array = decoder.decompressSync(data1);
-const result2: Uint8Array = decoder.decompressSync(data2);
+// 3. Reusable codec instance — one instance does both directions
+//    (avoids re-acquiring from the pool)
+const codec = await createCodec();
+const result1: Uint8Array = codec.decompressSync(data1);
+const result2: Uint8Array = codec.decompressSync(data2);
 ```
 
 ## Compression
@@ -51,7 +52,7 @@ import {
   compress,
   decompress,
   compressSync,
-  createEncoder,
+  createCodec,
   setupZstdCodec,
 } from 'zstd-wasm-codec';                  // Default (Node/browser inferred)
 

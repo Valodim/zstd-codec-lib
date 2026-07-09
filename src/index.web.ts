@@ -1,24 +1,17 @@
-import { _internal } from './shared.js';
-
-// oxlint-disable-next-line oxc/no-barrel-file -- entrypoint module
-export {
-  createDecoder,
-  decompress,
-  decompressSync,
-  setupZstdDecoder,
-  ZstdDecoder,
-} from './shared.js';
+import { _internal } from './codec-shared.js';
 
 // oxlint-disable-next-line oxc/no-barrel-file -- entrypoint module
 export {
   compress,
   compressSync,
-  createEncoder,
+  createCodec,
+  decompress,
+  decompressSync,
   setupZstdCodec,
-  ZstdEncoder,
-} from './encoder-shared.js';
+  ZstdCodec,
+} from './codec-shared.js';
 
-export type { DecoderOptions, EncoderOptions, CodecOptions } from './types.js';
+export type { CodecOptions, ZstdOptions } from './types.js';
 
 _internal._loader = async (wasmPath?: string) => {
   const wasmUrl = wasmPath || new URL('./zstd.wasm', import.meta.url).href;
