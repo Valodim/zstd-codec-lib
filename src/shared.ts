@@ -199,9 +199,17 @@ export class ZstdDecompressionStream {
 
 export const decompress = async (
   input: Uint8Array,
-  options?: ZstdOptions,
+  _options?: ZstdOptions,
 ): Promise<Uint8Array> => {
-  return (await decompressStream(input, true, options)).buf;
+  // One-shot: the whole input is provided, so decode with `final` set — a
+  // frame left incomplete means the input was truncated and must throw
+  // rather than silently returning partial output.
+  const [decoder, idx] = await _acquireDecoder();
+  try {
+    return decoder.decompressStream(input, true, true).buf;
+  } finally {
+    idx == -1 ? decoder._destroy() : _releaseDecoder(idx);
+  }
 };
 
 export const decompressStream = async (

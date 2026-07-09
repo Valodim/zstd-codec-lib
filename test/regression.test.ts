@@ -631,3 +631,69 @@ describe('hostage-byte tail-drain — no truncation at staging-buffer multiples'
     }
   });
 });
+
+/**
+ * Audit follow-up — truncated frames. The streaming decode loop stopped once
+ * its input ran out and returned whatever it had decoded, so the one-shot
+ * `decompress()` (which always routes through streaming) silently returned a
+ * *partial* buffer for a truncated frame — while `decompressSync()`'s one-shot
+ * `dm()` path correctly errored. The two public APIs disagreed and the async
+ * one handed back corrupt data. A `final` flag now makes the one-shot entries
+ * assert the frame completed.
+ */
+describe('truncated frames throw on the one-shot APIs', () => {
+  function mk(n: number): Buffer {
+    const b = Buffer.alloc(n);
+    for (let i = 0; i < n; i++) b[i] = (i * 7 + (i >> 3)) & 0xff; // semi-compressible
+    return b;
+  }
+
+  async function unknownSizeFrame(buf: Buffer): Promise<Buffer> {
+    const z = zlib.createZstdCompress();
+    const out: Buffer[] = [];
+    z.on('data', (d: Buffer) => out.push(d));
+    const done = new Promise<void>((res) => z.on('end', () => res()));
+    z.end(buf);
+    await done;
+    return Buffer.concat(out); // frame with UNKNOWN content size
+  }
+
+  test('declared-content-size frame, tail truncated → decompress() throws', async () => {
+    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+    const data = mk(3 * 1024 * 1024);
+    const frame = Buffer.from(zlib.zstdCompressSync(data, {}));
+    const truncated = frame.subarray(0, frame.length - 20);
+    await expect(decompress(truncated)).rejects.toThrow(/truncated|dec err/);
+  });
+
+  test('unknown-content-size frame, tail truncated → decompress() throws', async () => {
+    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+    const data = mk(3 * 1024 * 1024);
+    const frame = await unknownSizeFrame(data);
+    const truncated = frame.subarray(0, frame.length - 20);
+    await expect(decompress(truncated)).rejects.toThrow(/truncated|dec err/);
+  });
+
+  test('unknown-content-size frame, tail truncated → decompressSync() throws', async () => {
+    const { createDecoder, decompressSync } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+    const data = mk(3 * 1024 * 1024);
+    const frame = await unknownSizeFrame(data);
+    const truncated = frame.subarray(0, frame.length - 20);
+    expect(() => decompressSync(truncated)).toThrow(/truncated|dec err/);
+  });
+
+  test('a complete frame still round-trips (no false positive)', async () => {
+    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+    const data = mk(3 * 1024 * 1024);
+    for (const frame of [
+      Buffer.from(zlib.zstdCompressSync(data, {})),
+      await unknownSizeFrame(data),
+    ]) {
+      expect(hash(Buffer.from(await decompress(frame)))).toBe(hash(data));
+    }
+  });
+});

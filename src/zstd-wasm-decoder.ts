@@ -127,9 +127,10 @@ class ZstdDecoder {
 
     if (!expectedSize) expectedSize = _fss(compressedData);
 
-    // No expected size, or above thresholds for single pass => Use streaming
+    // No expected size, or above thresholds for single pass => Use streaming.
+    // This is a complete one-shot decode, so require the frame to finish.
     if (expectedSize === 0 || expectedSize > this._maxDstBuf || srcSize > _MAX_SRC_BUF) {
-      return this.decompressStream(compressedData, true).buf;
+      return this.decompressStream(compressedData, true, true).buf;
     }
 
     const _dstPtr = this._dstPtr;
@@ -165,9 +166,13 @@ class ZstdDecoder {
    *
    * @param input - Input chunk
    * @param reset - Reset stream for new decompression (default: false)
+   * @param final - Treat `input` as the complete remaining input: after it is
+   *   consumed the current frame must have ended, else the data was truncated
+   *   and we throw. Off by default so incremental chunk-at-a-time callers
+   *   (ZstdDecompressionStream) are not flagged mid-stream.
    * @returns Decompression result with buffer, code, and input offset
    */
-  decompressStream(input: Uint8Array, reset = false): StreamResult {
+  decompressStream(input: Uint8Array, reset = false, final = false): StreamResult {
     if (!this._exports) throw new err('not init');
 
     // Reset stream state for new decompression - ZSTD_reset_session_only = 1
@@ -192,6 +197,9 @@ class ZstdDecoder {
     let dstOffset = dstBufStart;
     const dstMaxBuf = dstBufStart + 655360;
     let lastOut = 0;
+    // Hint returned by the last step: 0 once a frame boundary is reached
+    // (with all output flushed), non-zero while a frame still needs input.
+    let lastHint = 0;
     while (offset < inLen) {
       //ZSTD_BLOCKSIZE_MAX + ZSTD_BLOCKHEADERSIZE (131072 + 3) x 2 == 262150
       const toProcess = Math.min(inLen - offset, 262150);
@@ -207,6 +215,7 @@ class ZstdDecoder {
       while (this._readStreamPos(this._streamInputStructPtr) < toProcess) {
         const result = this._exports.decompressStreamStep();
         if (result < 0) throw new err(`dec err ${result}`);
+        lastHint = result;
 
         const outputPos = this._readStreamPos(this._streamOutputStructPtr);
 
@@ -233,6 +242,11 @@ class ZstdDecoder {
 
     // Flush remaining chunk
     if (dstOffset != dstBufStart) output.push(this._HEAPU8.slice(dstBufStart, dstOffset));
+
+    // One-shot callers hand us the whole input at once: if the decoder is
+    // still mid-frame after consuming all of it, the frame was truncated.
+    // Silently returning the partial output would hand back corrupt data.
+    if (final && lastHint !== 0) throw new err(`truncated: incomplete frame`);
 
     return {
       buf: _concatUint8Arrays(output, totalOutputSize),
