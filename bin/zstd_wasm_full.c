@@ -60,14 +60,15 @@ typedef struct {
     unsigned char pad2[4];
 } __attribute__((aligned(32))) ZstdBufsObject;
 
-__attribute__((section(".rodata")))
+/* Mutated at runtime (stream structs written from JS each step) — must be
+ * writable, so leave it in the default (.bss) section, not .rodata. */
 static ZstdBufsObject ZstdBufs;
 
 typedef struct {
     ZSTD_DCtx dctx;
 } __attribute__((aligned(16))) ZstdPadObject;
 
-__attribute__((section(".rodata")))
+/* The ZSTD_DCtx is mutated throughout decode — keep it writable (.bss). */
 static ZstdPadObject ZstdPad;
 static ZSTD_DCtx* dctx = &ZstdPad.dctx;
 
