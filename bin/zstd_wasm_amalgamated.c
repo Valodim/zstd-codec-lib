@@ -17306,14 +17306,15 @@ typedef struct {
     unsigned char pad2[4];
 } __attribute__((aligned(32))) ZstdBufsObject;
 
-__attribute__((section(".rodata")))
+/* Mutated at runtime (stream structs written from JS each step) — must be
+ * writable, so leave it in the default (.bss) section, not .rodata. */
 static ZstdBufsObject ZstdBufs;
 
 typedef struct {
     ZSTD_DCtx dctx;
 } __attribute__((aligned(16))) ZstdPadObject;
 
-__attribute__((section(".rodata")))
+/* The ZSTD_DCtx is mutated throughout decode — keep it writable (.bss). */
 static ZstdPadObject ZstdPad;
 static ZSTD_DCtx* dctx = &ZstdPad.dctx;
 
@@ -39400,6 +39401,10 @@ void setHeapEnd(size_t new_size) {
 
 void* calloc(size_t nmemb, size_t size) {
     size_t total = nmemb * size;
+    /* Reject multiplication overflow (size_t is 32-bit on wasm32): a wrapped
+     * `total` would malloc too little and the memset below would then run
+     * past the allocation. */
+    if (nmemb != 0 && total / nmemb != size) return NULL;
     void* ptr = malloc(total);
     if (ptr) __builtin_memset(ptr, 0, total);
     return ptr;
