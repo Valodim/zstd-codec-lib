@@ -367,3 +367,260 @@ describe('malloc bounds guard', () => {
     });
   }
 });
+
+/**
+ * Audit 2026-07-09 §2.1 — pool-lock bypass. A `ZstdDecompressionStream` holds a
+ * pooled decoder locked *across awaits*; a `decompressSync` in between used to
+ * grab `pool[0]` regardless of lock state, resetting the shared ZSTD_DCtx and
+ * heap cursor mid-stream and corrupting the in-flight decode. The fix takes a
+ * free slot (or a transient instance), never a locked one. The encoder has the
+ * symmetric hazard: `compressSync`'s all-busy fallback must build a transient
+ * encoder instead of reusing a slot a `ZstdCompressionStream` is parked on.
+ */
+describe('pool-lock bypass — sync calls do not disturb in-flight streams', () => {
+  const sha = (b: Buffer | Uint8Array) => createHash('sha256').update(b).digest('hex');
+
+  function incompressible(n: number): Buffer {
+    const out = Buffer.alloc(n);
+    let seed = createHash('sha256').update('pool-lock-seed').digest();
+    for (let off = 0; off < n; off += 32) {
+      seed = createHash('sha256').update(seed).digest();
+      seed.copy(out, off, 0, Math.min(32, n - off));
+    }
+    return out;
+  }
+
+  async function readAll(readable: ReadableStream<Uint8Array>): Promise<Buffer> {
+    const reader = readable.getReader();
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  test('decompressSync mid-stream leaves the stream uncorrupted', async () => {
+    const { createDecoder, decompressSync, ZstdDecompressionStream } = await import(
+      '../dist/esm/index.node.js'
+    );
+    await createDecoder();
+
+    const streamSrc = incompressible(1024 * 1024); // compressed ~= 1 MB, exceeds minRecvSize
+    const streamFrame = Buffer.from(zlib.zstdCompressSync(streamSrc, {}));
+    const syncSrc = Buffer.from('interleaved sync decode payload '.repeat(2000));
+    const syncFrame = Buffer.from(zlib.zstdCompressSync(syncSrc, {}));
+
+    const stream = new ZstdDecompressionStream();
+    const writer = stream.writable.getWriter();
+    const readPromise = readAll(stream.readable);
+
+    // Feed enough to cross minRecvSize so the stream acquires (and locks) a
+    // pooled decoder, then parks between chunks.
+    const CH = 64 * 1024;
+    let i = 0;
+    for (; i < streamFrame.length && i < 400 * 1024; i += CH) {
+      await writer.write(streamFrame.subarray(i, i + CH));
+    }
+
+    // Interleaved sync decode while the stream holds a pooled slot.
+    expect(sha(decompressSync(syncFrame))).toBe(sha(syncSrc));
+
+    for (; i < streamFrame.length; i += CH) await writer.write(streamFrame.subarray(i, i + CH));
+    await writer.close();
+    expect(sha(await readPromise)).toBe(sha(streamSrc));
+  });
+
+  test('compressSync while all pool encoders are held by open streams', async () => {
+    const { setupZstdCodec, compressSync, decompress, ZstdCompressionStream } = await import(
+      '../dist/esm/index.node.js'
+    );
+    await setupZstdCodec({});
+
+    const N = 3; // == encoder pool max; open enough streams to lock every slot
+    const srcs = Array.from({ length: N }, (_, i) => Buffer.from(`stream ${i} body `.repeat(3000)));
+    const streams = srcs.map(() => new ZstdCompressionStream({ level: 1 }));
+    const writers = streams.map((s) => s.writable.getWriter());
+    const reads = streams.map((s) => readAll(s.readable));
+
+    // First chunk to each stream acquires and locks all pool encoders.
+    for (let i = 0; i < N; i++) await writers[i].write(srcs[i].subarray(0, 100));
+
+    // Whole pool busy → compressSync must run on a transient encoder.
+    const syncSrc = Buffer.from('interleaved sync compress payload '.repeat(2000));
+    expect(sha(await decompress(compressSync(syncSrc, { level: 1 })))).toBe(sha(syncSrc));
+
+    for (let i = 0; i < N; i++) {
+      await writers[i].write(srcs[i].subarray(100));
+      await writers[i].close();
+    }
+    const comps = await Promise.all(reads);
+    for (let i = 0; i < N; i++) {
+      expect(sha(await decompress(comps[i]))).toBe(sha(srcs[i]));
+    }
+  });
+});
+
+/**
+ * Audit 2026-07-09 §4.5 — skippable frames. Both the single-pass decoder
+ * (`dm()`, bin/zstd_wasm_full.c) and the JS streaming path have dedicated
+ * handling for skippable frames (magic 0x184D2A50..0x184D2A5F), but nothing
+ * exercised it. Cover one skippable frame sandwiched between real frames, and
+ * one whose header is split across tiny streaming chunk boundaries.
+ */
+describe('skippable frames are skipped', () => {
+  const sha = (b: Buffer | Uint8Array) => createHash('sha256').update(b).digest('hex');
+
+  // magic (LE) + frame_size (LE32) + user data
+  const skippable = (payload: Buffer, variant = 0): Buffer => {
+    const hdr = Buffer.alloc(8);
+    hdr.writeUInt32LE(0x184d2a50 + (variant & 0xf), 0);
+    hdr.writeUInt32LE(payload.length, 4);
+    return Buffer.concat([hdr, payload]);
+  };
+
+  test('one-shot: skippable frame mid-concatenation is dropped', async () => {
+    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+
+    const a = Buffer.from('AAAA'.repeat(500));
+    const b = Buffer.from('BBBB'.repeat(500));
+    const fa = Buffer.from(zlib.zstdCompressSync(a, {}));
+    const fb = Buffer.from(zlib.zstdCompressSync(b, {}));
+    const cat = Buffer.concat([fa, skippable(Buffer.from('user metadata — ignore me'), 5), fb]);
+
+    expect(sha(await decompress(cat))).toBe(sha(Buffer.concat([a, b])));
+  });
+
+  test('streaming: skippable header split across chunk boundaries', async () => {
+    const { createDecoder, ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+
+    // Payload big enough to force the streaming path (over minRecvSize).
+    const payload = Buffer.from('x'.repeat(400 * 1024));
+    const frame = Buffer.from(zlib.zstdCompressSync(payload, {}));
+    const cat = Buffer.concat([frame, skippable(Buffer.alloc(1000, 7)), frame]);
+
+    const stream = new ZstdDecompressionStream();
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    // 7-byte chunks straddle the 8-byte skippable magic/size header.
+    void (async () => {
+      for (let i = 0; i < cat.length; i += 7) await writer.write(cat.subarray(i, i + 7));
+      await writer.close();
+    })();
+    const chunks: Uint8Array[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    expect(sha(Buffer.concat(chunks))).toBe(sha(Buffer.concat([payload, payload])));
+  });
+});
+
+/**
+ * Audit 2026-07-09 §4.6 — golden decompression fixtures were decoded but never
+ * checked against expected bytes (only the all-zeros ones were hashed). Pin the
+ * exact output of the non-trivial goldens against an independent oracle
+ * (node:zlib), so a silent decode regression can't slip through.
+ */
+describe('golden decompression — exact output bytes', () => {
+  const GOLDEN_DIR = join(__dirname, 'edge-cases', 'golden-decompression');
+
+  for (const file of ['block-128k.zst', 'zeroSeq_2B.zst']) {
+    test(`${file} decodes byte-identical to node:zlib`, async () => {
+      const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+      await createDecoder();
+      const comp = readFileSync(join(GOLDEN_DIR, file));
+      const expected = Buffer.from(zlib.zstdDecompressSync(comp));
+      expect(hash(Buffer.from(await decompress(comp)))).toBe(hash(expected));
+    });
+  }
+});
+
+/**
+ * Audit 2026-07-09 §4.7 / §2.2 — size-hint parsing boundaries.
+ *  - `rb`/`_fss` must read an 8-byte Frame_Content_Size (fcf=3) and top-bit-set
+ *    4-byte fields without the `<<`-wrap / signedness bug (fixed in 2.2).
+ *  - `decompressSync` sizes its single-pass dst buffer from `_fss`, which only
+ *    reflects frame ONE. Concatenated frames whose *total* output exceeds that
+ *    buffer must still be handled safely — the streaming public `decompress`
+ *    round-trips them, and `decompressSync` must never return corrupt bytes
+ *    (it fails cleanly with a ZSTD error instead).
+ */
+describe('size-hint parsing boundaries', () => {
+  test('rb/_fss read fcf=3 (8-byte) and top-bit-set fields exactly', async () => {
+    const { rb, _fss } = await import('../src/utils.ts');
+
+    const FOUR_GIB = 4 * 1024 ** 3; // 4294967296 — beyond 32-bit
+    const fcs = new Uint8Array(8);
+    let v = FOUR_GIB;
+    for (let i = 0; i < 8; i++) {
+      fcs[i] = v & 0xff;
+      v = Math.floor(v / 256);
+    }
+    // magic + flags(fcf=3 → 0xC0, single-segment off, dict off) + window + FCS(8)
+    const header = Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd, 0xc0, 0x00, ...fcs]);
+
+    expect(rb(fcs, 0, 8)).toBe(FOUR_GIB);
+    expect(_fss(header)).toBe(FOUR_GIB);
+    // 4-byte little-endian read with the high bit set must stay unsigned.
+    expect(rb(Uint8Array.from([0x00, 0x00, 0x00, 0x80]), 0, 4)).toBe(2147483648);
+  });
+
+  test('concatenated frames exceeding the sync dst buffer stay safe', async () => {
+    const { createDecoder, decompress, decompressSync } = await import(
+      '../dist/esm/index.node.js'
+    );
+    await createDecoder();
+
+    // Each frame declares only ~1 MB (well under the ~9.4 MB sync buffer), but
+    // the concatenation totals 12 MB — _fss sees only the first frame's size.
+    const oneMB = Buffer.alloc(1024 * 1024, 0xab);
+    const frame = Buffer.from(zlib.zstdCompressSync(oneMB, {}));
+    const N = 12;
+    const cat = Buffer.concat(Array.from({ length: N }, () => frame));
+    const expected = hash(Buffer.alloc(N * oneMB.length, 0xab));
+
+    // Streaming public entry handles arbitrary totals.
+    expect(hash(Buffer.from(await decompress(cat)))).toBe(expected);
+
+    // Single-pass sync must not return corrupt bytes: either exact, or a clean throw.
+    let syncResult: string | null = null;
+    try {
+      syncResult = hash(Buffer.from(decompressSync(cat)));
+    } catch (e) {
+      expect(String(e)).toMatch(/dec err/);
+    }
+    if (syncResult !== null) expect(syncResult).toBe(expected);
+  });
+});
+
+/**
+ * Audit 2026-07-09 §4.8 — hostage-byte tail-drain. The JS streaming decoder
+ * stages output through a fixed 917501-byte buffer; high-ratio frames whose
+ * decompressed size lands on (or just off) a multiple of that stride are the
+ * boundary where a tail byte could be dropped. Upstream's hostage-byte
+ * mechanism covers it — this pins that no truncation creeps in.
+ */
+describe('hostage-byte tail-drain — no truncation at staging-buffer multiples', () => {
+  const STAGE = 917501;
+
+  test('high-ratio frames around 1–4× the staging stride round-trip', async () => {
+    const { createDecoder, decompress } = await import('../dist/esm/index.node.js');
+    await createDecoder();
+
+    for (const k of [1, 2, 3, 4]) {
+      for (const delta of [-2, -1, 0, 1, 2]) {
+        const n = k * STAGE + delta;
+        const src = Buffer.alloc(n, 0x5a); // maximally compressible
+        const comp = Buffer.from(zlib.zstdCompressSync(src, {}));
+        const out = Buffer.from(await decompress(comp));
+        expect(out.length).toBe(n);
+        expect(hash(out)).toBe(hash(src));
+      }
+    }
+  });
+});
