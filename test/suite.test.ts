@@ -200,7 +200,6 @@ describe('WASM decompression', () => {
       const data = loadTestFile(filename);
       await testMultipleLevels(data, COMPRESSION_LEVELS.ALL);
     });
-
   });
 
   // Edge case tests

@@ -39,8 +39,8 @@ for (const p of [WASM_PATH, WASM_PERF_PATH]) {
   }
 }
 
-console.log(`WASM size-optimized: ${(Bun.file(WASM_PATH).size).toLocaleString()} bytes`);
-console.log(`WASM perf-optimized: ${(Bun.file(WASM_PERF_PATH).size).toLocaleString()} bytes\n`);
+console.log(`WASM size-optimized: ${Bun.file(WASM_PATH).size.toLocaleString()} bytes`);
+console.log(`WASM perf-optimized: ${Bun.file(WASM_PERF_PATH).size.toLocaleString()} bytes\n`);
 
 const terserOptions = {
   ecma: 2020 as const,
@@ -204,7 +204,7 @@ function compressWithZopfli(inputPath: string, iterations: number): Buffer {
     const compressed = readFileSync(tmpOutput);
     try {
       unlinkSync(tmpOutput);
-    } catch (e) {}
+    } catch {}
 
     console.log(`  Original: ${readFileSync(inputPath).length.toLocaleString()} bytes`);
     console.log(`  Compressed: ${compressed.length.toLocaleString()} bytes`);
@@ -263,10 +263,7 @@ await buildInlined('size');
 await buildInlined('perf');
 
 const webJs = readFileSync(join(ESM_DIR, 'index.web.js'), 'utf8');
-writeFileSync(
-  join(ESM_DIR, 'index.web.perf.js'),
-  webJs.replace(/zstd\.wasm/g, 'zstd-perf.wasm'),
-);
+writeFileSync(join(ESM_DIR, 'index.web.perf.js'), webJs.replace(/zstd\.wasm/g, 'zstd-perf.wasm'));
 console.log('Built: index.web.perf.js (via string replacement)');
 
 copyFileSync(WASM_PATH, join(ESM_DIR, 'zstd.wasm'));

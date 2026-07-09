@@ -105,10 +105,14 @@ function printTable(title: string, original: Buffer, rows: TableRow[]) {
         ],
   );
   const widths = headers.map((h, i) =>
-    Math.max(h.length, ...cells.filter((r): r is string[] => r !== null).map((row) => row[i].length)),
+    Math.max(
+      h.length,
+      ...cells.filter((r): r is string[] => r !== null).map((row) => row[i].length),
+    ),
   );
   const sepLine = widths.map((w) => '-'.repeat(w)).join('  ');
-  const fmt = (row: string[]) => row.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join('  ');
+  const fmt = (row: string[]) =>
+    row.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join('  ');
   console.log(fmt(headers));
   console.log(sepLine);
   for (const row of cells) console.log(row === null ? sepLine : fmt(row));

@@ -135,7 +135,13 @@ describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
   // few hundred KB. Compressed one-shot, which declares Frame_Content_Size.
   function makeCompressible(size: number): Buffer {
     const buf = Buffer.alloc(size);
-    const tokens = ['the quick brown fox ', 'lorem ipsum dolor ', '{"k":1,"v":', '0000000000', 'ABCDEF'];
+    const tokens = [
+      'the quick brown fox ',
+      'lorem ipsum dolor ',
+      '{"k":1,"v":',
+      '0000000000',
+      'ABCDEF',
+    ];
     let off = 0;
     let i = 0;
     while (off < size) {
@@ -268,12 +274,17 @@ describe('dictionary-referencing frames are rejected', () => {
   // dictID) + dictID(5) + FCS(1 byte content) + one raw last-block with a
   // single payload byte.
   const dictFrame = Uint8Array.from([
-    0x28, 0xb5, 0x2f, 0xfd, // magic
-    0x21,                   // FHD: singleSegment=1, dictIDflag=1
-    0x05,                   // dictID = 5
-    0x01,                   // frame content size = 1
-    0x09, 0x00, 0x00,       // block header: last=1, type=raw, size=1
-    0x42,                   // payload
+    0x28,
+    0xb5,
+    0x2f,
+    0xfd, // magic
+    0x21, // FHD: singleSegment=1, dictIDflag=1
+    0x05, // dictID = 5
+    0x01, // frame content size = 1
+    0x09,
+    0x00,
+    0x00, // block header: last=1, type=raw, size=1
+    0x42, // payload
   ]);
 
   test('decompress() fails with a ZSTD error, not garbage output', async () => {
@@ -302,7 +313,7 @@ describe('dictionary-referencing frames are rejected', () => {
 describe('inlined-WASM base64 fallback (no Uint8Array.fromBase64)', () => {
   test('decodes to a valid wasm module and round-trips a frame', async () => {
     const original = (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
-    // biome-ignore lint/performance/noDelete: forcing the fallback branch
+    // delete to force the fallback branch (no Uint8Array.fromBase64)
     delete (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
     try {
       const { createDecoder, decompress } = await import('../dist/esm/index.inlined.js');
@@ -402,9 +413,8 @@ describe('pool-lock bypass — sync calls do not disturb in-flight streams', () 
   }
 
   test('decompressSync mid-stream leaves the stream uncorrupted', async () => {
-    const { createDecoder, decompressSync, ZstdDecompressionStream } = await import(
-      '../dist/esm/index.node.js'
-    );
+    const { createDecoder, decompressSync, ZstdDecompressionStream } =
+      await import('../dist/esm/index.node.js');
     await createDecoder();
 
     const streamSrc = incompressible(1024 * 1024); // compressed ~= 1 MB, exceeds minRecvSize
@@ -433,9 +443,8 @@ describe('pool-lock bypass — sync calls do not disturb in-flight streams', () 
   });
 
   test('compressSync while all pool encoders are held by open streams', async () => {
-    const { setupZstdCodec, compressSync, decompress, ZstdCompressionStream } = await import(
-      '../dist/esm/index.node.js'
-    );
+    const { setupZstdCodec, compressSync, decompress, ZstdCompressionStream } =
+      await import('../dist/esm/index.node.js');
     await setupZstdCodec({});
 
     const N = 3; // == encoder pool max; open enough streams to lock every slot
@@ -571,9 +580,7 @@ describe('size-hint parsing boundaries', () => {
   });
 
   test('concatenated frames exceeding the sync dst buffer stay safe', async () => {
-    const { createDecoder, decompress, decompressSync } = await import(
-      '../dist/esm/index.node.js'
-    );
+    const { createDecoder, decompress, decompressSync } = await import('../dist/esm/index.node.js');
     await createDecoder();
 
     // Each frame declares only ~1 MB (well under the ~9.4 MB sync buffer), but

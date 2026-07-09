@@ -9,8 +9,6 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, test, beforeAll } from 'vitest';
 
 import {
-  ZstdEncoder,
-  ZstdDecoder,
   compress,
   decompress,
   ZstdCompressionStream,
@@ -48,7 +46,10 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> 
   }
   const out = new Uint8Array(total);
   let off = 0;
-  for (const c of chunks) { out.set(c, off); off += c.length; }
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
   return out;
 }
 
@@ -76,8 +77,7 @@ describe('ZstdEncoder direct API', () => {
   for (const level of LEVELS) {
     test(`compressSync @ level ${level}`, async () => {
       const src = txt(200);
-      const enc = await (await import('../dist/esm/index.node.js'))
-        .createEncoder({ level });
+      const enc = await (await import('../dist/esm/index.node.js')).createEncoder({ level });
       const out = enc.compressSync(src);
       expect(out.length).toBeLessThan(src.length / 2);
       const decoded = await decompress(out);
@@ -91,15 +91,11 @@ describe('streaming compression', () => {
     test(`Compression+Decompression streams round-trip @ level ${level}`, async () => {
       const src = txt(2000); // ~90 KB
       const compStream = new ZstdCompressionStream({ level });
-      const compressed = await readAll(
-        new Blob([src]).stream().pipeThrough(compStream),
-      );
+      const compressed = await readAll(new Blob([src]).stream().pipeThrough(compStream));
       expect(compressed.length).toBeLessThan(src.length / 4);
 
       const decStream = new ZstdDecompressionStream();
-      const decoded = await readAll(
-        new Blob([compressed]).stream().pipeThrough(decStream),
-      );
+      const decoded = await readAll(new Blob([compressed]).stream().pipeThrough(decStream));
       expect(bufEq(decoded, src)).toBe(true);
     });
   }
@@ -147,9 +143,7 @@ describe('encoder pool concurrency', () => {
       new TextEncoder().encode(`payload ${i}: ${'x'.repeat(1000 * (i + 1))}`),
     );
 
-    const compressed = await Promise.all(
-      inputs.map((src) => compress(src, { level: 1 })),
-    );
+    const compressed = await Promise.all(inputs.map((src) => compress(src, { level: 1 })));
 
     const decoded = await Promise.all(compressed.map((c) => decompress(c)));
 
@@ -167,13 +161,9 @@ describe('encoder pool concurrency', () => {
     const results = await Promise.all(
       sessions.map(async (s) => {
         const compStream = new ZstdCompressionStream({ level: 1 });
-        const compressed = await readAll(
-          new Blob([s.src]).stream().pipeThrough(compStream),
-        );
+        const compressed = await readAll(new Blob([s.src]).stream().pipeThrough(compStream));
         const decStream = new ZstdDecompressionStream();
-        const decoded = await readAll(
-          new Blob([compressed]).stream().pipeThrough(decStream),
-        );
+        const decoded = await readAll(new Blob([compressed]).stream().pipeThrough(decStream));
         return { tag: s.tag, src: s.src, decoded };
       }),
     );

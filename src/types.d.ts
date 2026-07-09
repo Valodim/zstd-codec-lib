@@ -39,7 +39,13 @@ export interface CodecWasmExports extends DecoderWasmExports {
   initCompressor(level: number): number;
 
   /** Single-shot compress at a given level. */
-  compress(dstPtr: number, dstCapacity: number, srcPtr: number, srcSize: number, level: number): number;
+  compress(
+    dstPtr: number,
+    dstCapacity: number,
+    srcPtr: number,
+    srcSize: number,
+    level: number,
+  ): number;
 
   /** Streaming compress step. endOp: 0=continue 1=flush 2=end-of-frame. */
   compressStreamStep(endOp: number): number;

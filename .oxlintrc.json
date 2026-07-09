@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "import"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-explicit-any": "off",
+    "no-cond-assign": "off",
+    "prefer-const": "error",
+    "no-non-null-assertion": "warn",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "oxc/no-accumulating-spread": "warn",
+    "oxc/no-barrel-file": "error"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "dist",
+    "build",
+    "vendor",
+    "**/*.wasm",
+    "**/*.d.ts.map",
+    "**/*.js.map",
+    "test/data/*.json",
+    "test/benchmark/compressed/*.json",
+    "src/utils.ts",
+    "src/zstd-wasm-decoder.ts",
+    "src/shared.ts"
+  ]
+}

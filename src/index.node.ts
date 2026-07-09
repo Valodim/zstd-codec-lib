@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { _internal } from './shared.js';
 
-// biome-ignore lint/performance/noBarrelFile: entrypoint module
+// oxlint-disable-next-line oxc/no-barrel-file -- entrypoint module
 export {
   createDecoder,
   decompress,
@@ -12,7 +12,7 @@ export {
   ZstdDecompressionStream,
 } from './shared.js';
 
-// biome-ignore lint/performance/noBarrelFile: entrypoint module
+// oxlint-disable-next-line oxc/no-barrel-file -- entrypoint module
 export {
   compress,
   compressSync,

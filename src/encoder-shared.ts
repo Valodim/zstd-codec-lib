@@ -61,9 +61,7 @@ async function _createEncoder(opts: EncoderOptions): Promise<ZstdEncoder> {
  * Returns [encoder, idx, key]. idx === -1 means the encoder is transient
  * (pool was full) and the caller must call _destroy() when done.
  */
-async function _acquireEncoder(
-  opts: EncoderOptions = {},
-): Promise<[ZstdEncoder, number, string]> {
+async function _acquireEncoder(opts: EncoderOptions = {}): Promise<[ZstdEncoder, number, string]> {
   const key = _poolKey(opts);
 
   if (!encoderPools.has(key)) {
@@ -103,9 +101,7 @@ function _releaseEncoder(idx: number, key: string): void {
  * on first use otherwise. Pre-warms an encoder if any encoder option is
  * provided so the first compression doesn't pay the wasm-init cost.
  */
-export const setupZstdCodec = async (
-  options: CodecOptions = {},
-): Promise<void> => {
+export const setupZstdCodec = async (options: CodecOptions = {}): Promise<void> => {
   await _loadModule(options.wasmPath);
   if (options.level || options.maxSrcSize) {
     const [, idx, key] = await _acquireEncoder(options);
@@ -113,9 +109,7 @@ export const setupZstdCodec = async (
   }
 };
 
-export const createEncoder = async (
-  options: CodecOptions = {},
-): Promise<ZstdEncoder> => {
+export const createEncoder = async (options: CodecOptions = {}): Promise<ZstdEncoder> => {
   const mod = await _loadModule(options.wasmPath);
   return new ZstdEncoder(options).init(mod);
 };
@@ -139,10 +133,7 @@ export const compress = async (
  * via setupZstdCodec or a prior compress() call (so the wasm module is
  * cached). Picks any free encoder from the pool; if none, throws.
  */
-export const compressSync = (
-  input: Uint8Array,
-  options: EncoderOptions = {},
-): Uint8Array => {
+export const compressSync = (input: Uint8Array, options: EncoderOptions = {}): Uint8Array => {
   const key = _poolKey(options);
   const pool = encoderPools.get(key);
   const locks = encoderLocks.get(key);

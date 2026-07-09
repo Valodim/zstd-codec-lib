@@ -29,11 +29,18 @@ yarn test:bun
 # Single test file / pattern (vitest config lives in test/)
 yarn vitest run --config test/vitest.config.ts test/suite.test.ts -t "<name pattern>"
 
+# Lint + format (oxlint + oxfmt; no biome)
+yarn lint                     # oxlint (--fix via yarn lint:fix)
+yarn format                   # oxfmt --write (format:check to verify only)
+yarn check                    # lint + format:check together
+
 # Benchmarks
 yarn bench:full               # setup + run; bench:setup generates fixtures
 ```
 
 `Makefile` is the source of truth for WASM flags (`size` / `perf` targets, `regenerate-amalgamated`, `check-tools`). `make` == `yarn build:wasm`.
+
+Linting/formatting is `oxlint` (`.oxlintrc.json`) + `oxfmt` (`.oxfmtrc.json`), migrated from biome. oxfmt is scoped to JS/TS only (Markdown/HTML/YAML/JSON are ignored); `src/utils.ts`, `src/zstd-wasm-decoder.ts`, and `src/shared.ts` are excluded from both tools to preserve their hand-tuned layout, and the stale `packages/` leftover is ignored.
 
 ## Architecture
 

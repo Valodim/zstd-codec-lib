@@ -69,9 +69,7 @@ validate((await decompressStream(compressed, true)).buf, 'decompressStream');
 validate(await readStream(compressed), 'ZstdDecompressionStream');
 
 const wasmModule = new WebAssembly.Module(
-  readFileSync(
-    new URL('../../dist/esm/zstd-perf.wasm', import.meta.url),
-  ),
+  readFileSync(new URL('../../dist/esm/zstd-perf.wasm', import.meta.url)),
 );
 
 const decoder = new ZstdDecoder();
