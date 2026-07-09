@@ -55,9 +55,9 @@ describe('encoder fails cleanly when buffers do not fit', () => {
  * disabling both the input-size guard and the decompression-bomb output guard.
  */
 describe('decoder default size limits are finite (not NaN)', () => {
-  // _MAX_DST_BUF_DEFAULT (9_830_464) << 6 — the finite floor the constructor
+  // _MAX_DST_BUF_DEFAULT (9_830_464) * 64 — the finite floor the constructor
   // must apply when no options are given.
-  const FLOOR = 9830464 << 6;
+  const FLOOR = 9830464 * 64;
 
   test('bare new ZstdDecoder() applies the finite floor, never NaN', async () => {
     const { ZstdDecoder } = await import('../src/zstd-wasm-decoder.ts');

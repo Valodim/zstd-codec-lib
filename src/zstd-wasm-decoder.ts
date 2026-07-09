@@ -62,8 +62,11 @@ class ZstdDecoder {
     // Coalesce undefined → 0: a bare `new ZstdDecoder()` must still get the
     // finite floor, not Math.max(undefined, …) === NaN (which disables the
     // size/decompression-bomb guards entirely).
-    this._maxSrcSize = Math.max(options.maxSrcSize ?? 0, _MAX_DST_BUF_DEFAULT << 6)
-    this._maxDstSize = Math.max(options.maxDstSize ?? 0, _MAX_DST_BUF_DEFAULT << 6)
+    // Use `* 64`, not `<< 6`: JS bitwise ops are signed 32-bit, so a larger
+    // default would silently wrap negative and re-disable the guards.
+    const floor = _MAX_DST_BUF_DEFAULT * 64
+    this._maxSrcSize = Math.max(options.maxSrcSize ?? 0, floor)
+    this._maxDstSize = Math.max(options.maxDstSize ?? 0, floor)
   }
 
   /**
