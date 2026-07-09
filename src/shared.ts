@@ -1,8 +1,7 @@
 import ZstdDecoder from './zstd-wasm-decoder.js';
 export { default as ZstdDecoder, _MAX_SRC_BUF } from './zstd-wasm-decoder.js';
 
-import type { StreamResult, ZstdOptions } from './types.js';
-import { rzfh, type DZS, err, _concatUint8Arrays } from './utils.js';
+import type { ZstdOptions } from './types.js';
 
 export const _internal = {
   _loader: null as ((wasmPath?: string) => WebAssembly.Module | Promise<WebAssembly.Module>) | null,
@@ -75,128 +74,6 @@ export const createDecoder = async (
   return _createDecoderInstance();
 };
 
-const _toUint8Array = (chunk: BufferSource): Uint8Array => {
-  if (chunk instanceof Uint8Array) return chunk;
-  if (ArrayBuffer.isView(chunk))
-    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-  return new Uint8Array(chunk as ArrayBuffer);
-};
-
-export class ZstdDecompressionStream {
-  /**
-   * The resulting decompressed stream to read output from.
-   * @type {ReadableStream<Uint8Array>}
-   */
-  readonly readable: ReadableStream;
-  /**
-   * The writable end of the stream to pipe compressed chunks into.
-   * @type {WritableStream<BufferSource>}
-   */
-  readonly writable: WritableStream;
-
-  /**
-   * @param {ZstdOptions} [options] - Optional decoder configuration.
-   */
-  constructor(options?: ZstdOptions) {
-    let decoder: ZstdDecoder;
-    let idx: number = -1;
-    // A temporary buffer to hold data until the header can be read.
-    const initialBuffer: Uint8Array[] = [];
-    let headerInfo: DZS = { d: 0, u: 0, e: -1 };
-    let bytesRead: number = 0;
-    let minRecvSize: number = 262144;
-
-    const { readable, writable } = new TransformStream<BufferSource, Uint8Array>({
-      async transform(
-        chunk: BufferSource,
-        controller: TransformStreamDefaultController<Uint8Array>,
-      ) {
-        const data = _toUint8Array(chunk);
-        bytesRead += data.length;
-        // Retain compressed chunks only until the decoder is live; once it
-        // exists each chunk is fed incrementally and must not accumulate,
-        // otherwise initialBuffer grows with the entire input.
-        if (!decoder) initialBuffer.push(data);
-        // Wait until we have at least enough bytes for a full frame header.
-        if (bytesRead < 12) {
-          return;
-        } else if (headerInfo.e == -1) {
-          // Gather all data so far for actual header probing.
-          const headerBuffer = _concatUint8Arrays(initialBuffer, bytesRead);
-          try {
-            headerInfo = rzfh(headerBuffer) as DZS;
-          } catch (er) {
-            controller.error(new err(`dec err ${er}`));
-            return;
-          }
-          // Adapt minimum receive size depending on header, but cap it so a
-          // frame declaring a huge (decompressed) content size can't force
-          // buffering the whole compressed input before streaming begins.
-          minRecvSize = Math.min(
-            1 << 20,
-            Math.max(minRecvSize, headerInfo.e, headerInfo.u >> 4, 1 << 17),
-          );
-        }
-        if (bytesRead < minRecvSize || headerInfo.e == -1) return;
-
-        // After header probing, start streaming/decoding. Once the decoder
-        // exists, each subsequent chunk is fed incrementally.
-        if (decoder) {
-          const result = decoder.decompressStream(data, false).buf;
-          if (result.length > 0) {
-            controller.enqueue(result);
-          }
-          return;
-        }
-
-        try {
-          // First decode after the buffering threshold: feed EVERYTHING
-          // buffered so far (header + all earlier chunks), not just the chunk
-          // that crossed the threshold. The earlier chunks were held in
-          // initialBuffer and were never handed to the decoder — feeding only
-          // the latest one drops the prefix and corrupts the stream.
-          const buffered = _concatUint8Arrays(initialBuffer, bytesRead);
-          [decoder, idx] = await _acquireDecoder();
-
-          const result = decoder.decompressStream(buffered, true).buf;
-          if (result.length > 0) {
-            controller.enqueue(result);
-          }
-        } catch (er) {
-          controller.error(new err(`dec err ${er}`));
-        }
-      },
-
-      async flush(controller: TransformStreamDefaultController<Uint8Array>) {
-        // Only one-shot here when the decoder was never acquired (input
-        // stayed below minRecvSize). If a decoder exists it already consumed
-        // every chunk incrementally, and initialBuffer no longer holds them.
-        if (!decoder && bytesRead > 6) {
-          try {
-            const res = await decompressStream(
-              _concatUint8Arrays(initialBuffer, bytesRead),
-              true,
-              options,
-            );
-            controller.enqueue(res.buf);
-          } catch (er) {
-            controller.error(new err(`dec err ${er}`));
-          }
-        }
-        if (idx == -1) {
-          decoder?._destroy();
-        } else {
-          _releaseDecoder(idx);
-        }
-        controller.terminate();
-      },
-    });
-
-    this.readable = readable;
-    this.writable = writable;
-  }
-}
-
 export const decompress = async (
   input: Uint8Array,
   _options?: ZstdOptions,
@@ -206,21 +83,10 @@ export const decompress = async (
   // rather than silently returning partial output.
   const [decoder, idx] = await _acquireDecoder();
   try {
-    return decoder.decompressStream(input, true, true).buf;
+    return decoder._decompressStream(input, true, true).buf;
   } finally {
     idx == -1 ? decoder._destroy() : _releaseDecoder(idx);
   }
-};
-
-export const decompressStream = async (
-  input: Uint8Array,
-  reset = false,
-  _options?: ZstdOptions,
-): Promise<StreamResult> => {
-  const [decoder, idx] = await _acquireDecoder();
-  const result = decoder.decompressStream(input, reset);
-  idx == -1 ? decoder._destroy() : _releaseDecoder(idx);
-  return result;
 };
 
 export const decompressSync = (
@@ -228,10 +94,9 @@ export const decompressSync = (
   expectedSize?: number,
   _options?: ZstdOptions,
 ): Uint8Array => {
-  // Never reuse a pool slot that a ZstdDecompressionStream may hold locked
-  // across awaits — decompressSync resets the shared ZSTD_DCtx and heap
-  // cursor, which would corrupt that in-flight stream. Take a free slot if
-  // one exists, otherwise run on a transient instance.
+  // Take a free pool slot if one exists, otherwise run on a transient
+  // instance. Each pooled decoder is its own wasm instance, so a free slot
+  // can't be mid-decode elsewhere.
   let idx = -1;
   for (let i = 0; i < poolLocks.length; ++i) {
     if (!poolLocks[i]) {

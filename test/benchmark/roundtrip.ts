@@ -1,13 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { constants, zstdCompressSync } from 'node:zlib';
-import {
-  createDecoder,
-  decompressStream,
-  decompressSync,
-  ZstdDecoder,
-  ZstdDecompressionStream,
-} from '../../dist/esm/index.node.js';
+import { createDecoder, decompressSync, ZstdDecoder } from '../../dist/esm/index.node.js';
 import { hash } from '../lib/utils.js';
 
 const dir = import.meta.dirname || process.cwd();
@@ -38,35 +32,9 @@ const validate = (result: Uint8Array, label: string) => {
   console.log(`✓ ${label}`);
 };
 
-const readStream = async (buf: Buffer) => {
-  const stream = new ZstdDecompressionStream();
-  const reader = stream.readable.getReader();
-  const writer = stream.writable.getWriter();
-
-  writer.write(buf);
-  writer.close();
-
-  const chunks: Uint8Array[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
-  }
-
-  const result = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return result;
-};
-
 console.log('Running roundtrip validation...\n');
 
 validate(decompressSync(compressed), 'decompressSync');
-validate((await decompressStream(compressed, true)).buf, 'decompressStream');
-validate(await readStream(compressed), 'ZstdDecompressionStream');
 
 const wasmModule = new WebAssembly.Module(
   readFileSync(new URL('../../dist/esm/zstd-perf.wasm', import.meta.url)),
@@ -76,4 +44,3 @@ const decoder = new ZstdDecoder();
 decoder.init(wasmModule);
 
 validate(decoder.decompressSync(compressed), 'ZstdDecoder instance (decompressSync)');
-validate(decoder.decompressStream(compressed, true).buf, 'ZstdDecoder instance (decompressStream)');

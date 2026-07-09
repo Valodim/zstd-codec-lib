@@ -8,13 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { describe, expect, test, beforeAll } from 'vitest';
 
-import {
-  compress,
-  decompress,
-  ZstdCompressionStream,
-  ZstdDecompressionStream,
-  setupZstdCodec,
-} from '../dist/esm/index.node.js';
+import { compress, decompress, setupZstdCodec } from '../dist/esm/index.node.js';
 
 // Compression is level-1-only — the encoder rejects any other level.
 const LEVELS = [1] as const;
@@ -32,25 +26,6 @@ function bufEq(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
-}
-
-async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    total += value.length;
-  }
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    out.set(c, off);
-    off += c.length;
-  }
-  return out;
 }
 
 describe('high-level compress/decompress', () => {
@@ -81,21 +56,6 @@ describe('ZstdEncoder direct API', () => {
       const out = enc.compressSync(src);
       expect(out.length).toBeLessThan(src.length / 2);
       const decoded = await decompress(out);
-      expect(bufEq(decoded, src)).toBe(true);
-    });
-  }
-});
-
-describe('streaming compression', () => {
-  for (const level of LEVELS) {
-    test(`Compression+Decompression streams round-trip @ level ${level}`, async () => {
-      const src = txt(2000); // ~90 KB
-      const compStream = new ZstdCompressionStream({ level });
-      const compressed = await readAll(new Blob([src]).stream().pipeThrough(compStream));
-      expect(compressed.length).toBeLessThan(src.length / 4);
-
-      const decStream = new ZstdDecompressionStream();
-      const decoded = await readAll(new Blob([compressed]).stream().pipeThrough(decStream));
       expect(bufEq(decoded, src)).toBe(true);
     });
   }
@@ -149,27 +109,6 @@ describe('encoder pool concurrency', () => {
 
     for (let i = 0; i < inputs.length; i++) {
       expect(bufEq(decoded[i], inputs[i])).toBe(true);
-    }
-  });
-
-  test('concurrent streaming compress sessions do not interfere', async () => {
-    const sessions = Array.from({ length: 4 }, (_, i) => ({
-      tag: `session-${i}`,
-      src: new TextEncoder().encode(`session ${i} body: ${'-'.repeat(5000 + i * 1000)}`),
-    }));
-
-    const results = await Promise.all(
-      sessions.map(async (s) => {
-        const compStream = new ZstdCompressionStream({ level: 1 });
-        const compressed = await readAll(new Blob([s.src]).stream().pipeThrough(compStream));
-        const decStream = new ZstdDecompressionStream();
-        const decoded = await readAll(new Blob([compressed]).stream().pipeThrough(decStream));
-        return { tag: s.tag, src: s.src, decoded };
-      }),
-    );
-
-    for (const r of results) {
-      expect(bufEq(r.decoded, r.src)).toBe(true);
     }
   });
 });

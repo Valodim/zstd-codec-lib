@@ -7,10 +7,7 @@
     "zstd",
     "wasm",
     "compression",
-    "decompression",
-    "streaming",
-    "CompressionStreams API",
-    "DecompressionStreams API"
+    "decompression"
   ],
   "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
   "bugs": "https://github.com/tadpole-labs/zstd-codec-lib/issues",

@@ -6,11 +6,6 @@
  */
 
 export const err = Error;
-export interface DZS {
-  d: number; // dictionary ID
-  u: number; // window size
-  e: number; // uncompressed (content) size; 0 when not declared in the header
-}
 
 export const rb = (d: Uint8Array, b: number, n: number) => {
   // Accumulate with multiplication rather than `<<`: JS bitwise ops are
@@ -31,50 +26,9 @@ export const _fss = (dat: Uint8Array): number => {
     fcf = flg >> 6;
   // Frame_Content_Size sits after the (optional) Window_Descriptor and the
   // Dictionary_ID field: offset = (6 - singleSegment) + dictIdBytes.
-  // (Mind JS precedence — this MUST be parenthesised, see rzfh below.)
+  // (Mind JS precedence — the dict-bytes ternary MUST be parenthesised.)
   const off = 6 - ss + (df == 3 ? 4 : df);
   return rb(dat, off, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
-};
-
-// Read Zstandard frame header
-export const rzfh = (dat: Uint8Array): number | DZS => {
-  // Skippable frame (magic 0x184D2A50..0x184D2A5F — low nibble is the variant).
-  // It carries no window/content, so return a benign descriptor: the streaming
-  // header-probe must not reject it (the wasm decoder skips it just fine), and
-  // a real frame may follow. Without this, a stream that *begins* with a
-  // skippable frame threw "bad zstd dat" during probing.
-  if ((dat[0] & 0xf0) == 0x50 && dat[1] == 0x2a && dat[2] == 0x4d && dat[3] == 0x18) {
-    return { d: 0, u: 0, e: 0 };
-  }
-  if ((dat[0] | (dat[1] << 8) | (dat[2] << 16)) == 0x2fb528 && dat[3] == 253) {
-    // Zstandard frame
-    const flg = dat[4];
-    const ss = (flg >> 5) & 1,      // single segment
-      df = flg & 3,                 // dict flag
-      fcf = flg >> 6;               // frame content flag
-    // byte
-    const bt = 6 - ss;
-    // dict bytes
-    const db = df == 3 ? 4 : df;
-    // dictionary id
-    const d = rb(dat, bt, db);
-    const e = rb(dat, bt + db, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
-    // window size
-    let u = e;
-    if (!ss) {
-      // window descriptor
-      const wb = 1 << (10 + (dat[5] >> 3));
-      u = wb + (wb >> 3) * (dat[5] & 7);
-    }
-    // Guard the *window* size (u), not the content size (e): large payloads
-    // are normal and must still decode (future-proof up to level 9 → 4 MB
-    // window). Match the wasm decoder's hard cap (ZSTD_WASM_MAX_WINDOW_SIZE
-    // = 4 MB + 1, windowLog 22 / level 9) so over-cap frames fail here at the
-    // same threshold rather than only later inside the wasm.
-    if (u > 4194305) throw new err('win 2 large');
-    return { d, u, e };
-  }
-  throw new err('bad zstd dat');
 };
 
 // Concatenate Uint8Array chunks into a single buffer

@@ -28,17 +28,11 @@ declare class ZstdEncoder {
     private _writeStreamStruct;
     private _readStreamPos;
     /**
-     * Streaming compression — drains the input and ends the frame, returning
-     * the full compressed output. Use ZstdCompressionStream for incremental.
+     * Internal streaming engine — not part of the public API. Drains the input
+     * and ends the frame, returning the full compressed output. Used only as the
+     * fallback path for `compressSync` when the input exceeds maxSrcSize.
      */
-    compressStream(input: Uint8Array, reset?: boolean, level?: number): Uint8Array;
-    /**
-     * Streaming compression — feed a chunk and return whatever output is
-     * available so far. Caller is responsible for sequencing reset/end.
-     */
-    compressStreamChunk(input: Uint8Array, endOfStream: boolean): Uint8Array;
-    /** Reset for a fresh frame. */
-    reset(level?: number): void;
+    _compressStream(input: Uint8Array, reset?: boolean, level?: number): Uint8Array;
     _destroy(): void;
 }
 export default ZstdEncoder;

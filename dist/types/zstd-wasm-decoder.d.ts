@@ -71,17 +71,19 @@ declare class ZstdDecoder {
      */
     private _readStreamPos;
     /**
-     * Streadming decompression - can be fed chunks incrementally
+     * Internal streaming engine — not part of the public API. Kept private so
+     * `decompressSync` can transparently fall back to it for payloads larger
+     * than the sync dst buffer, and so the pooled one-shot `decompress` helper
+     * can drive it. Fed the whole input at once with `final = true`.
      *
      * @param input - Input chunk
      * @param reset - Reset stream for new decompression (default: false)
      * @param final - Treat `input` as the complete remaining input: after it is
      *   consumed the current frame must have ended, else the data was truncated
-     *   and we throw. Off by default so incremental chunk-at-a-time callers
-     *   (ZstdDecompressionStream) are not flagged mid-stream.
+     *   and we throw.
      * @returns Decompression result with buffer, code, and input offset
      */
-    decompressStream(input: Uint8Array, reset?: boolean, final?: boolean): StreamResult;
+    _decompressStream(input: Uint8Array, reset?: boolean, final?: boolean): StreamResult;
     /**
      * Clean up ZSTD context
      */

@@ -21,10 +21,4 @@ export declare const compress: (input: Uint8Array, options?: CodecOptions) => Pr
  * cached). Picks any free encoder from the pool; if none, throws.
  */
 export declare const compressSync: (input: Uint8Array, options?: EncoderOptions) => Uint8Array;
-/** Streaming WHATWG TransformStream — pipes plaintext bytes to compressed bytes. */
-export declare class ZstdCompressionStream {
-    readonly readable: ReadableStream;
-    readonly writable: WritableStream;
-    constructor(options?: CodecOptions);
-}
 //# sourceMappingURL=encoder-shared.d.ts.map

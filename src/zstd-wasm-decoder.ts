@@ -133,7 +133,7 @@ class ZstdDecoder {
     // No expected size, or above thresholds for single pass => Use streaming.
     // This is a complete one-shot decode, so require the frame to finish.
     if (expectedSize === 0 || expectedSize > this._maxDstBuf || srcSize > _MAX_SRC_BUF) {
-      return this.decompressStream(compressedData, true, true).buf;
+      return this._decompressStream(compressedData, true, true).buf;
     }
 
     const _dstPtr = this._dstPtr;
@@ -165,17 +165,19 @@ class ZstdDecoder {
   }
 
   /**
-   * Streadming decompression - can be fed chunks incrementally
+   * Internal streaming engine — not part of the public API. Kept private so
+   * `decompressSync` can transparently fall back to it for payloads larger
+   * than the sync dst buffer, and so the pooled one-shot `decompress` helper
+   * can drive it. Fed the whole input at once with `final = true`.
    *
    * @param input - Input chunk
    * @param reset - Reset stream for new decompression (default: false)
    * @param final - Treat `input` as the complete remaining input: after it is
    *   consumed the current frame must have ended, else the data was truncated
-   *   and we throw. Off by default so incremental chunk-at-a-time callers
-   *   (ZstdDecompressionStream) are not flagged mid-stream.
+   *   and we throw.
    * @returns Decompression result with buffer, code, and input offset
    */
-  decompressStream(input: Uint8Array, reset = false, final = false): StreamResult {
+  _decompressStream(input: Uint8Array, reset = false, final = false): StreamResult {
     if (!this._exports) throw new err('not init');
 
     // Reset stream state for new decompression - ZSTD_reset_session_only = 1

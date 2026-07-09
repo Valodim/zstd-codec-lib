@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { nodeAdapter } from './adapters/node-adapter.ts';
-import { initWasmAdapter, wasmAdapter, ZstdDecompressionStream } from './adapters/wasm-adapter.ts';
+import { initWasmAdapter, wasmAdapter } from './adapters/wasm-adapter.ts';
 import { ensureTestData } from './lib/test-data-generator.ts';
 import { hash, slice } from './lib/utils.ts';
 
@@ -15,7 +15,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMPRESSION_LEVELS = {
   ALL: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
   REPRESENTATIVE: [1, 3, 6, 9, 12, 15, 19],
-  STREAMING: [1, 6, 12, 19],
+  CHUNKED: [1, 6, 12, 19],
 };
 
 const TEST_FILES = [
@@ -105,18 +105,6 @@ beforeAll(async () => {
         }
         return results[0];
       },
-      decompressStream: async (data: any, isFirst: boolean, opts: any) => {
-        const results = await Promise.all(
-          adapters.map((a) => a.decompressStream(data, isFirst, opts)),
-        );
-        for (let i = 1; i < results.length; i++) {
-          if (!Buffer.from(results[i].buf).equals(Buffer.from(results[0].buf))) {
-            throw new Error(`Browser ${browsers[i]} stream result differs from ${browsers[0]}`);
-          }
-        }
-        return results[0];
-      },
-      createDecompressionStream: (opts: any) => adapters[0].createDecompressionStream(opts),
       close: () => Promise.all(adapters.map((a) => a.close())),
     };
     console.log('All browsers ready');
@@ -285,9 +273,9 @@ describe('WASM decompression', () => {
   });
 });
 
-describe('Streaming decompression', () => {
+describe('Multi-chunk & large-input decompression (one-shot)', () => {
   describe('chunk recombination', () => {
-    test('single chunk (no streaming)', async () => {
+    test('single chunk', async () => {
       const data = Buffer.from('Hello World!');
       const compressed = compress(data);
       const decompressed = await decompress(compressed);
@@ -367,7 +355,7 @@ describe('Streaming decompression', () => {
   });
 
   describe('compression levels with chunking', () => {
-    test.each(COMPRESSION_LEVELS.STREAMING)('level %i - chunked decompression', async (level) => {
+    test.each(COMPRESSION_LEVELS.CHUNKED)('level %i - chunked decompression', async (level) => {
       const data = randomBuffer(30 * 1024);
       const compressed = compress(data, { level });
 
@@ -388,7 +376,7 @@ describe('Streaming decompression', () => {
     });
   });
 
-  describe('large data streaming', () => {
+  describe('large data', () => {
     test('1MB file in chunks', async () => {
       const data = randomBuffer(1024 * 1024);
       const compressed = compress(data);
@@ -403,7 +391,7 @@ describe('Streaming decompression', () => {
       expect(hash(decompressed)).toBe(hash(data));
     });
 
-    test('highly compressible data streaming', async () => {
+    test('highly compressible data', async () => {
       const data = Buffer.alloc(512 * 1024, 0xaa);
       const compressed = compress(data);
 
@@ -412,105 +400,7 @@ describe('Streaming decompression', () => {
     });
   });
 
-  // decompressStream API tests
-  describe('decompressStream API', () => {
-    test('stream API with single chunk', async () => {
-      if (!decompressAdapter.decompressStream) return;
-
-      const data = Buffer.from('Hello Stream!');
-      const compressed = compress(data);
-
-      const result = await decompressAdapter.decompressStream(compressed, true);
-      const resultBuf = Buffer.from(result.buf);
-      expect(hash(resultBuf)).toBe(hash(data));
-    });
-
-    test('stream API with multiple chunks', async () => {
-      if (!decompressAdapter.decompressStream) return;
-
-      const data = randomBuffer(10 * 1024);
-      const compressed = compress(data);
-
-      const outputs: Buffer[] = [];
-      const chunkSize = 2048;
-
-      for (let i = 0; i < compressed.length; i += chunkSize) {
-        const chunk = slice(compressed, i, Math.min(i + chunkSize, compressed.length));
-        const result = await decompressAdapter.decompressStream(chunk, i === 0);
-        if (result.buf.length > 0) outputs.push(Buffer.from(result.buf));
-      }
-
-      const decompressed = Buffer.concat(outputs);
-      expect(hash(decompressed)).toBe(hash(data));
-    });
-  });
-
-  // ZstdDecompressionStream class tests (JS wrapper)
-  describe('ZstdDecompressionStream', () => {
-    async function streamDecompress(compressed: Buffer, opts?: any): Promise<Buffer> {
-      const stream = decompressAdapter.createDecompressionStream
-        ? decompressAdapter.createDecompressionStream(opts)
-        : new ZstdDecompressionStream(opts);
-
-      if (stream._initInBrowser) await stream._initInBrowser();
-
-      const writer = stream.writable.getWriter();
-      const reader = stream.readable.getReader();
-
-      writer.write(compressed);
-      writer.close();
-
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
-
-      return Buffer.concat(chunks);
-    }
-
-    test('single write', async () => {
-      const data = randomBuffer(100 * 1024);
-      const compressed = compress(data);
-      const decompressed = await streamDecompress(compressed);
-      expect(hash(decompressed)).toBe(hash(data));
-    });
-
-    test('multiple writes', async () => {
-      const data = randomBuffer(100 * 1024);
-      const compressed = compress(data);
-
-      const stream = decompressAdapter.createDecompressionStream
-        ? decompressAdapter.createDecompressionStream()
-        : new ZstdDecompressionStream();
-
-      if (stream._initInBrowser) await stream._initInBrowser();
-
-      const writer = stream.writable.getWriter();
-      const reader = stream.readable.getReader();
-
-      const chunkSize = 8192;
-      (async () => {
-        for (let i = 0; i < compressed.length; i += chunkSize) {
-          await writer.write(slice(compressed, i, Math.min(i + chunkSize, compressed.length)));
-        }
-        await writer.close();
-      })();
-
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
-
-      const decompressed = Buffer.concat(chunks);
-      expect(hash(decompressed)).toBe(hash(data));
-    });
-  });
-
-  describe('extreme streaming tests', () => {
+  describe('extreme size tests', () => {
     test('16MB random noise at level 9', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
       const compressed = compress(data, { level: 9 });
@@ -519,29 +409,6 @@ describe('Streaming decompression', () => {
       expect(hash(decompressed)).toBe(hash(data));
     }, 300000); // 5 minute timeout
 
-    test('256MB random noise - streamed in 1% increments', async () => {
-      if (!decompressAdapter.decompressStream) {
-        console.log('Skipping chunked streaming test: decompressStream not available');
-        return;
-      }
-
-      const data = randomBuffer(256 * 1024 * 1024);
-      const compressed = compress(data, { level: 9 });
-
-      // 1% of the compressed data per chunk
-      const chunkSize = Math.max(1, Math.floor(compressed.length * 0.01));
-      const outputs: Buffer[] = [];
-      console.log(`Streaming ${compressed.length} bytes in ${chunkSize}-byte chunks`);
-
-      for (let i = 0; i < compressed.length; i += chunkSize) {
-        const chunk = slice(compressed, i, i + chunkSize);
-        const result = await decompressAdapter.decompressStream(chunk, i === 0);
-        if (result.buf.length > 0) outputs.push(Buffer.from(result.buf));
-      }
-
-      const decompressed = Buffer.concat(outputs);
-      expect(hash(decompressed)).toBe(hash(data));
-    }, 300000); // 5 minute timeout
     test('16MB random noise - corrupted (skipped bytes)', async () => {
       const data = randomBuffer(16 * 1024 * 1024);
       const compressed = compress(data, { level: 9 });

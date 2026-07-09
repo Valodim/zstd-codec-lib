@@ -1,11 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as zlib from 'node:zlib';
-import {
-  decompress as wasmDecompress,
-  decompressStream as wasmDecompressStream,
-  ZstdDecompressionStream,
-} from '../../dist/esm/index.node.js';
+import { decompress as wasmDecompress } from '../../dist/esm/index.node.js';
 import { loadCompressedFiles } from './util.js';
 
 const dir = join(import.meta.dirname || process.cwd(), 'compressed');
@@ -19,24 +15,6 @@ if (!existsSync(metaPath) || fileCount < 1000) await import('./setup.js');
 const isBun = typeof Bun !== 'undefined';
 const runtime = isBun ? 'Bun' : 'Node.js';
 
-const decompressWithStream = async (buf: Buffer) => {
-  const stream = new ZstdDecompressionStream();
-  const reader = stream.readable.getReader();
-  const writer = stream.writable.getWriter();
-
-  writer.write(buf);
-  writer.close();
-
-  const chunks: Uint8Array[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
-  }
-
-  return chunks;
-};
-
 const warmup = async (buffers: Buffer[]) => {
   for (let i = 0; i < 5; i++) {
     for (const buf of buffers) {
@@ -49,8 +27,6 @@ const warmup = async (buffers: Buffer[]) => {
         await Bun.zstdDecompress(buf);
       }
       await wasmDecompress(buf);
-      await wasmDecompressStream(buf, true);
-      await decompressWithStream(buf);
     }
   }
 };
@@ -93,22 +69,6 @@ results.push(
   await runBenchmark(
     'zstd-wasm (decompress)',
     (buf) => wasmDecompress(buf),
-    benchBuffers,
-    metadata.fileSizes,
-  ),
-);
-results.push(
-  await runBenchmark(
-    'zstd-wasm (decompressStream)',
-    (buf) => wasmDecompressStream(buf, true),
-    benchBuffers,
-    metadata.fileSizes,
-  ),
-);
-results.push(
-  await runBenchmark(
-    'zstd-wasm (DecompressionStream)',
-    (buf) => decompressWithStream(buf),
     benchBuffers,
     metadata.fileSizes,
   ),

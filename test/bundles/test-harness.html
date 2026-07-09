@@ -6,7 +6,7 @@
 </head>
 <body>
   <script type="module">
-    import { ZstdDecoder, ZstdDecompressionStream } from 'http://localhost:42069/dist/esm/index.web.js';
+    import { ZstdDecoder } from 'http://localhost:42069/dist/esm/index.web.js';
 
     // Load and compile WASM module once
     const wasmUrl = 'http://localhost:42069/dist/esm/zstd.wasm';
@@ -21,14 +21,9 @@
     // Expose API
     window.ZstdWasm = {
       ready: true,
-      ZstdDecompressionStream,
 
       decompressSync: async (data, opts = {}) => {
         return mainDecoder.decompressSync(data);
-      },
-
-      decompressStream: async (data, isFirst = false, opts = {}) => {
-        return mainDecoder.decompressStream(data, isFirst);
       },
 
       decompress: (data, opts) => window.ZstdWasm.decompressSync(data, opts),

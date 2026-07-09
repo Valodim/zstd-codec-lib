@@ -116,7 +116,7 @@ class ZstdEncoder {
   compressSync(input: Uint8Array, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');
     const srcSize = input.length;
-    if (srcSize > this._maxSrcSize) return this.compressStream(input, true);
+    if (srcSize > this._maxSrcSize) return this._compressStream(input, true);
 
     // Buffers stay where _initialize left them; reset heap_cursor so
     // future malloc()s don't accumulate forever.
@@ -139,10 +139,11 @@ class ZstdEncoder {
   }
 
   /**
-   * Streaming compression — drains the input and ends the frame, returning
-   * the full compressed output. Use ZstdCompressionStream for incremental.
+   * Internal streaming engine — not part of the public API. Drains the input
+   * and ends the frame, returning the full compressed output. Used only as the
+   * fallback path for `compressSync` when the input exceeds maxSrcSize.
    */
-  compressStream(input: Uint8Array, reset = true, level?: number): Uint8Array {
+  _compressStream(input: Uint8Array, reset = true, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');
 
     const lvl = _assertLevel1(level ?? this._level);
@@ -199,66 +200,6 @@ class ZstdEncoder {
 
     flushOut();
     return _concatUint8Arrays(outChunks, outTotal);
-  }
-
-  /**
-   * Streaming compression — feed a chunk and return whatever output is
-   * available so far. Caller is responsible for sequencing reset/end.
-   */
-  compressStreamChunk(input: Uint8Array, endOfStream: boolean): Uint8Array {
-    if (!this._exports) throw new err('not init');
-
-    const inLen = input.length;
-    const outChunks: Uint8Array[] = [];
-    let outTotal = 0;
-
-    const flushOut = () => {
-      const written = this._readStreamPos(this._outStructPtr);
-      if (written > 0) {
-        outChunks.push(this._HEAPU8.slice(this._dstPtr, this._dstPtr + written));
-        outTotal += written;
-      }
-      this._writeStreamStruct(this._outStructPtr, this._dstPtr, this._dstCap, 0);
-    };
-
-    this._writeStreamStruct(this._outStructPtr, this._dstPtr, this._dstCap, 0);
-
-    const inChunkMax = Math.min(this._maxSrcSize, 1 << 20);
-    let inOff = 0;
-    while (inOff < inLen) {
-      const take = Math.min(inChunkMax, inLen - inOff);
-      this._HEAPU8.set(input.subarray(inOff, inOff + take), this._srcPtr);
-      this._writeStreamStruct(this._inStructPtr, this._srcPtr, take, 0);
-      while (this._readStreamPos(this._inStructPtr) < take) {
-        const r = this._exports.compressStreamStep(0);
-        if (r < 0) throw new err(`compressStreamStep err ${r >>> 0}`);
-        if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
-          flushOut();
-        }
-      }
-      inOff += take;
-    }
-
-    if (endOfStream) {
-      let r: number;
-      do {
-        this._writeStreamStruct(this._inStructPtr, this._srcPtr, 0, 0);
-        r = this._exports.compressStreamStep(2);
-        if (r < 0) throw new err(`compressStreamStep end err ${r >>> 0}`);
-        if (this._readStreamPos(this._outStructPtr) >= this._flushAt) {
-          flushOut();
-        }
-      } while (r > 0);
-    }
-
-    flushOut();
-    return _concatUint8Arrays(outChunks, outTotal);
-  }
-
-  /** Reset for a fresh frame. */
-  reset(level?: number): void {
-    const r = this._exports.initCompressor(_assertLevel1(level ?? this._level));
-    if (r < 0) throw new err(`initCompressor err ${r >>> 0}`);
   }
 
   _destroy(): void {

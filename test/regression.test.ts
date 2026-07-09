@@ -82,49 +82,10 @@ describe('decoder default size limits are finite (not NaN)', () => {
 });
 
 /**
- * Regression — commit "fix(utils): tighten rzfh window guard to the level-9 cap
- * (4 MB + 1)". The JS-side pre-check used to reject only windows > 10 MB, looser
- * than the decoder's hard 4 MB + 1 cap; frames declaring a 5-10 MB window slipped
- * past and were only refused deep in the wasm. The guard now matches the cap.
- */
-describe('rzfh window guard caps at 4 MB + 1', () => {
-  // Minimal 6-byte frame header: magic + flags(0) + window descriptor.
-  // flags = 0 → single_segment off, so rzfh derives the window from byte[5]:
-  //   exponent = byte5 >> 3   (windowLog = 10 + exponent)
-  //   mantissa = byte5 & 7    (window = base + (base / 8) * mantissa)
-  const frameHeader = (windowDescriptor: number) =>
-    Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, windowDescriptor]);
-  const wd = (exponent: number, mantissa: number) => (exponent << 3) | mantissa;
-
-  test('accepts a 4 MB window (windowLog 22 — the level-9 cap)', async () => {
-    const { rzfh } = await import('../src/utils.ts');
-    const header = rzfh(frameHeader(wd(12, 0))); // 4194304 ≤ 4194305
-    expect(typeof header).toBe('object');
-    expect((header as { u: number }).u).toBe(4194304);
-  });
-
-  test('rejects a ~5 MB window — the gap the old 10 MB guard let through', async () => {
-    const { rzfh } = await import('../src/utils.ts');
-    // windowLog 22, mantissa 2 → 4194304 + 2 * 524288 = 5242880 (~5 MB).
-    expect(() => rzfh(frameHeader(wd(12, 2)))).toThrow('win 2 large');
-  });
-
-  test('rejects just over the cap (windowLog 22, mantissa 1 → ~4.5 MB)', async () => {
-    const { rzfh } = await import('../src/utils.ts');
-    expect(() => rzfh(frameHeader(wd(12, 1)))).toThrow('win 2 large'); // 4718592
-  });
-
-  test('rejects an 8 MB window (windowLog 23, level > 9)', async () => {
-    const { rzfh } = await import('../src/utils.ts');
-    expect(() => rzfh(frameHeader(wd(13, 0)))).toThrow('win 2 large'); // 8388608
-  });
-});
-
-/**
  * Formerly large-compressible.test.ts — decoding LARGE, highly-compressible
  * frames (>10 MB decompressed, <2 MB compressed). suite.test.ts's random-data
- * streaming tests never hit this regime (compressed size ~= input size), masking
- * a size-hint misparse and a content-size-vs-window confusion in the stream.
+ * decompression tests never hit this regime (compressed size ~= input size), masking
+ * a size-hint misparse and a content-size-vs-window confusion in the internal engine.
  */
 describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
   const SIZE = 12 * 1024 * 1024; // 12 MB decompressed — comfortably over 10 MB
@@ -171,97 +132,6 @@ describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
     const { decompressSync } = await import('../dist/esm/index.node.js');
     expect(hash(Buffer.from(decompressSync(compressed)))).toBe(hash(data));
   });
-
-  test('ZstdDecompressionStream roundtrips', async () => {
-    const { ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
-    const stream = new ZstdDecompressionStream();
-    const writer = stream.writable.getWriter();
-    const reader = stream.readable.getReader();
-    void writer.write(compressed);
-    void writer.close();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    expect(hash(Buffer.concat(chunks))).toBe(hash(data));
-  });
-});
-
-/**
- * Formerly streaming-chunked.test.ts — ZstdDecompressionStream fed in small
- * chunks. When the buffering threshold is crossed after more than one chunk was
- * buffered, the decoder must receive ALL buffered bytes, not just the latest
- * chunk (else the prefix is dropped and the stream corrupts). Shows up only when
- * the frame exceeds minRecvSize (~256 KB) AND arrives in smaller pieces.
- */
-describe('ZstdDecompressionStream chunked input', () => {
-  const SIZE = 1024 * 1024; // 1 MB → compressed comfortably over the 256 KB threshold
-  let data: Buffer;
-  let declaredFrame: Buffer;
-  let unknownFrame: Buffer;
-
-  // Deterministic, incompressible payload (compressed size ~= input size).
-  function makeIncompressible(size: number): Buffer {
-    const out = Buffer.alloc(size);
-    let seed = createHash('sha256').update('streaming-chunked-seed').digest();
-    for (let off = 0; off < size; off += 32) {
-      seed = createHash('sha256').update(seed).digest();
-      seed.copy(out, off, 0, Math.min(32, size - off));
-    }
-    return out;
-  }
-
-  // Streaming compression — emits a frame with UNKNOWN content size.
-  async function streamingCompress(buf: Buffer): Promise<Buffer> {
-    const z = zlib.createZstdCompress();
-    const out: Buffer[] = [];
-    z.on('data', (d: Buffer) => out.push(d));
-    const done = new Promise<void>((res) => z.on('end', () => res()));
-    z.end(buf);
-    await done;
-    return Buffer.concat(out);
-  }
-
-  async function streamDecompressChunked(comp: Buffer, chunkSize: number): Promise<Buffer> {
-    const { ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
-    const stream = new ZstdDecompressionStream();
-    const writer = stream.writable.getWriter();
-    const reader = stream.readable.getReader();
-    (async () => {
-      for (let i = 0; i < comp.length; i += chunkSize) {
-        await writer.write(comp.subarray(i, i + chunkSize));
-      }
-      await writer.close();
-    })();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    return Buffer.concat(chunks);
-  }
-
-  beforeAll(async () => {
-    const { createDecoder } = await import('../dist/esm/index.node.js');
-    await createDecoder();
-    data = makeIncompressible(SIZE);
-    declaredFrame = Buffer.from(zlib.zstdCompressSync(data, {})); // declares content size
-    unknownFrame = await streamingCompress(data); // unknown content size
-    expect(declaredFrame.length).toBeGreaterThan(256 * 1024);
-    expect(unknownFrame.length).toBeGreaterThan(256 * 1024);
-  });
-
-  for (const chunkSize of [16 * 1024, 64 * 1024]) {
-    test(`declared content size, ${chunkSize / 1024}KB chunks`, async () => {
-      expect(hash(await streamDecompressChunked(declaredFrame, chunkSize))).toBe(hash(data));
-    });
-    test(`unknown content size, ${chunkSize / 1024}KB chunks`, async () => {
-      expect(hash(await streamDecompressChunked(unknownFrame, chunkSize))).toBe(hash(data));
-    });
-  }
 });
 
 /**
@@ -380,103 +250,10 @@ describe('malloc bounds guard', () => {
 });
 
 /**
- * Audit 2026-07-09 §2.1 — pool-lock bypass. A `ZstdDecompressionStream` holds a
- * pooled decoder locked *across awaits*; a `decompressSync` in between used to
- * grab `pool[0]` regardless of lock state, resetting the shared ZSTD_DCtx and
- * heap cursor mid-stream and corrupting the in-flight decode. The fix takes a
- * free slot (or a transient instance), never a locked one. The encoder has the
- * symmetric hazard: `compressSync`'s all-busy fallback must build a transient
- * encoder instead of reusing a slot a `ZstdCompressionStream` is parked on.
- */
-describe('pool-lock bypass — sync calls do not disturb in-flight streams', () => {
-  const sha = (b: Buffer | Uint8Array) => createHash('sha256').update(b).digest('hex');
-
-  function incompressible(n: number): Buffer {
-    const out = Buffer.alloc(n);
-    let seed = createHash('sha256').update('pool-lock-seed').digest();
-    for (let off = 0; off < n; off += 32) {
-      seed = createHash('sha256').update(seed).digest();
-      seed.copy(out, off, 0, Math.min(32, n - off));
-    }
-    return out;
-  }
-
-  async function readAll(readable: ReadableStream<Uint8Array>): Promise<Buffer> {
-    const reader = readable.getReader();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    return Buffer.concat(chunks);
-  }
-
-  test('decompressSync mid-stream leaves the stream uncorrupted', async () => {
-    const { createDecoder, decompressSync, ZstdDecompressionStream } =
-      await import('../dist/esm/index.node.js');
-    await createDecoder();
-
-    const streamSrc = incompressible(1024 * 1024); // compressed ~= 1 MB, exceeds minRecvSize
-    const streamFrame = Buffer.from(zlib.zstdCompressSync(streamSrc, {}));
-    const syncSrc = Buffer.from('interleaved sync decode payload '.repeat(2000));
-    const syncFrame = Buffer.from(zlib.zstdCompressSync(syncSrc, {}));
-
-    const stream = new ZstdDecompressionStream();
-    const writer = stream.writable.getWriter();
-    const readPromise = readAll(stream.readable);
-
-    // Feed enough to cross minRecvSize so the stream acquires (and locks) a
-    // pooled decoder, then parks between chunks.
-    const CH = 64 * 1024;
-    let i = 0;
-    for (; i < streamFrame.length && i < 400 * 1024; i += CH) {
-      await writer.write(streamFrame.subarray(i, i + CH));
-    }
-
-    // Interleaved sync decode while the stream holds a pooled slot.
-    expect(sha(decompressSync(syncFrame))).toBe(sha(syncSrc));
-
-    for (; i < streamFrame.length; i += CH) await writer.write(streamFrame.subarray(i, i + CH));
-    await writer.close();
-    expect(sha(await readPromise)).toBe(sha(streamSrc));
-  });
-
-  test('compressSync while all pool encoders are held by open streams', async () => {
-    const { setupZstdCodec, compressSync, decompress, ZstdCompressionStream } =
-      await import('../dist/esm/index.node.js');
-    await setupZstdCodec({});
-
-    const N = 3; // == encoder pool max; open enough streams to lock every slot
-    const srcs = Array.from({ length: N }, (_, i) => Buffer.from(`stream ${i} body `.repeat(3000)));
-    const streams = srcs.map(() => new ZstdCompressionStream({ level: 1 }));
-    const writers = streams.map((s) => s.writable.getWriter());
-    const reads = streams.map((s) => readAll(s.readable));
-
-    // First chunk to each stream acquires and locks all pool encoders.
-    for (let i = 0; i < N; i++) await writers[i].write(srcs[i].subarray(0, 100));
-
-    // Whole pool busy → compressSync must run on a transient encoder.
-    const syncSrc = Buffer.from('interleaved sync compress payload '.repeat(2000));
-    expect(sha(await decompress(compressSync(syncSrc, { level: 1 })))).toBe(sha(syncSrc));
-
-    for (let i = 0; i < N; i++) {
-      await writers[i].write(srcs[i].subarray(100));
-      await writers[i].close();
-    }
-    const comps = await Promise.all(reads);
-    for (let i = 0; i < N; i++) {
-      expect(sha(await decompress(comps[i]))).toBe(sha(srcs[i]));
-    }
-  });
-});
-
-/**
- * Audit 2026-07-09 §4.5 — skippable frames. Both the single-pass decoder
- * (`dm()`, bin/zstd_wasm_full.c) and the JS streaming path have dedicated
- * handling for skippable frames (magic 0x184D2A50..0x184D2A5F), but nothing
- * exercised it. Cover one skippable frame sandwiched between real frames, and
- * one whose header is split across tiny streaming chunk boundaries.
+ * Audit 2026-07-09 §4.5 — skippable frames. The single-pass decoder
+ * (`dm()`, bin/zstd_wasm_full.c) has dedicated handling for skippable frames
+ * (magic 0x184D2A50..0x184D2A5F), but nothing exercised it. Cover one
+ * skippable frame sandwiched between real frames.
  */
 describe('skippable frames are skipped', () => {
   const sha = (b: Buffer | Uint8Array) => createHash('sha256').update(b).digest('hex');
@@ -500,66 +277,6 @@ describe('skippable frames are skipped', () => {
     const cat = Buffer.concat([fa, skippable(Buffer.from('user metadata — ignore me'), 5), fb]);
 
     expect(sha(await decompress(cat))).toBe(sha(Buffer.concat([a, b])));
-  });
-
-  test('rzfh accepts skippable-frame magic (all 16 variants)', async () => {
-    const { rzfh } = await import('../src/utils.ts');
-    for (let v = 0; v <= 0xf; v++) {
-      const frame = skippable(Buffer.from('meta'), v);
-      const info = rzfh(frame);
-      expect(typeof info).toBe('object');
-      expect((info as { u: number }).u).toBe(0); // no window → never trips the cap
-    }
-  });
-
-  test('streaming: stream that BEGINS with a skippable frame decodes', async () => {
-    const { createDecoder, ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
-    await createDecoder();
-
-    // Big enough to force the streaming path (over minRecvSize), so the JS-side
-    // header probe (rzfh) runs on the leading skippable frame.
-    const payload = Buffer.from('y'.repeat(400 * 1024));
-    const frame = Buffer.from(zlib.zstdCompressSync(payload, {}));
-    const cat = Buffer.concat([skippable(Buffer.from('leading metadata'), 3), frame]);
-
-    const stream = new ZstdDecompressionStream();
-    const writer = stream.writable.getWriter();
-    const reader = stream.readable.getReader();
-    void writer.write(cat);
-    void writer.close();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    expect(sha(Buffer.concat(chunks))).toBe(sha(payload));
-  });
-
-  test('streaming: skippable header split across chunk boundaries', async () => {
-    const { createDecoder, ZstdDecompressionStream } = await import('../dist/esm/index.node.js');
-    await createDecoder();
-
-    // Payload big enough to force the streaming path (over minRecvSize).
-    const payload = Buffer.from('x'.repeat(400 * 1024));
-    const frame = Buffer.from(zlib.zstdCompressSync(payload, {}));
-    const cat = Buffer.concat([frame, skippable(Buffer.alloc(1000, 7)), frame]);
-
-    const stream = new ZstdDecompressionStream();
-    const writer = stream.writable.getWriter();
-    const reader = stream.readable.getReader();
-    // 7-byte chunks straddle the 8-byte skippable magic/size header.
-    void (async () => {
-      for (let i = 0; i < cat.length; i += 7) await writer.write(cat.subarray(i, i + 7));
-      await writer.close();
-    })();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    expect(sha(Buffer.concat(chunks))).toBe(sha(Buffer.concat([payload, payload])));
   });
 });
 
@@ -589,7 +306,7 @@ describe('golden decompression — exact output bytes', () => {
  *    4-byte fields without the `<<`-wrap / signedness bug (fixed in 2.2).
  *  - `decompressSync` sizes its single-pass dst buffer from `_fss`, which only
  *    reflects frame ONE. Concatenated frames whose *total* output exceeds that
- *    buffer must still be handled safely — the streaming public `decompress`
+ *    buffer must still be handled safely — the public one-shot `decompress`
  *    round-trips them, and `decompressSync` must never return corrupt bytes
  *    (it fails cleanly with a ZSTD error instead).
  */
@@ -625,7 +342,7 @@ describe('size-hint parsing boundaries', () => {
     const cat = Buffer.concat(Array.from({ length: N }, () => frame));
     const expected = hash(Buffer.alloc(N * oneMB.length, 0xab));
 
-    // Streaming public entry handles arbitrary totals.
+    // One-shot public `decompress` handles arbitrary totals.
     expect(hash(Buffer.from(await decompress(cat)))).toBe(expected);
 
     // Single-pass sync must not return corrupt bytes: either exact, or a clean throw.
@@ -640,8 +357,8 @@ describe('size-hint parsing boundaries', () => {
 });
 
 /**
- * Audit 2026-07-09 §4.8 — hostage-byte tail-drain. The JS streaming decoder
- * stages output through a fixed 917501-byte buffer; high-ratio frames whose
+ * Audit 2026-07-09 §4.8 — hostage-byte tail-drain. The internal streaming decode
+ * engine stages output through a fixed 917501-byte buffer; high-ratio frames whose
  * decompressed size lands on (or just off) a multiple of that stride are the
  * boundary where a tail byte could be dropped. Upstream's hostage-byte
  * mechanism covers it — this pins that no truncation creeps in.
@@ -667,9 +384,9 @@ describe('hostage-byte tail-drain — no truncation at staging-buffer multiples'
 });
 
 /**
- * Audit follow-up — truncated frames. The streaming decode loop stopped once
+ * Audit follow-up — truncated frames. The internal decode loop stopped once
  * its input ran out and returned whatever it had decoded, so the one-shot
- * `decompress()` (which always routes through streaming) silently returned a
+ * `decompress()` (which always routes through the internal streaming engine) silently returned a
  * *partial* buffer for a truncated frame — while `decompressSync()`'s one-shot
  * `dm()` path correctly errored. The two public APIs disagreed and the async
  * one handed back corrupt data. A `final` flag now makes the one-shot entries

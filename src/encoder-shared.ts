@@ -11,13 +11,6 @@ import { _internal } from './shared.js';
 
 export { default as ZstdEncoder } from './zstd-wasm-encoder.js';
 
-const _toUint8Array = (chunk: BufferSource): Uint8Array => {
-  if (chunk instanceof Uint8Array) return chunk;
-  if (ArrayBuffer.isView(chunk))
-    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-  return new Uint8Array(chunk as ArrayBuffer);
-};
-
 /**
  * Codec wasm module — fetched once, shared across all encoder/decoder
  * instances created from the codec entrypoint.
@@ -149,9 +142,8 @@ export const compressSync = (input: Uint8Array, options: EncoderOptions = {}): U
       }
     }
   }
-  // Whole pool is busy — DON'T reuse a locked slot: a ZstdCompressionStream
-  // may hold it across awaits, and sharing its CCtx/stream state would
-  // corrupt both. Run on a transient encoder instead.
+  // Whole pool is busy — run on a transient encoder rather than sharing a
+  // locked slot's CCtx state.
   if (!cachedModule) throw new err('codec not init — call setupZstdCodec or compress first');
   const enc = new ZstdEncoder(options).init(cachedModule);
   try {
@@ -160,58 +152,3 @@ export const compressSync = (input: Uint8Array, options: EncoderOptions = {}): U
     enc._destroy();
   }
 };
-
-/** Streaming WHATWG TransformStream — pipes plaintext bytes to compressed bytes. */
-export class ZstdCompressionStream {
-  readonly readable: ReadableStream;
-  readonly writable: WritableStream;
-
-  constructor(options: CodecOptions = {}) {
-    let encoder: ZstdEncoder | null = null;
-    let poolIdx = -1;
-    let poolKey = '';
-
-    const acquire = async () => {
-      if (encoder) return;
-      [encoder, poolIdx, poolKey] = await _acquireEncoder(options);
-      encoder.reset(options.level);
-    };
-
-    const release = () => {
-      if (!encoder) return;
-      if (poolIdx === -1) encoder._destroy();
-      else _releaseEncoder(poolIdx, poolKey);
-      encoder = null;
-    };
-
-    const { readable, writable } = new TransformStream<BufferSource, Uint8Array>({
-      async transform(chunk, controller) {
-        const data = _toUint8Array(chunk);
-        if (data.length === 0) return;
-        try {
-          await acquire();
-          const out = encoder!.compressStreamChunk(data, false);
-          if (out.length > 0) controller.enqueue(out);
-        } catch (e) {
-          release();
-          controller.error(new err(`enc err ${e}`));
-        }
-      },
-      async flush(controller) {
-        try {
-          await acquire();
-          const tail = encoder!.compressStreamChunk(new Uint8Array(0), true);
-          if (tail.length > 0) controller.enqueue(tail);
-        } catch (e) {
-          controller.error(new err(`enc end err ${e}`));
-        } finally {
-          release();
-          controller.terminate();
-        }
-      },
-    });
-
-    this.readable = readable;
-    this.writable = writable;
-  }
-}

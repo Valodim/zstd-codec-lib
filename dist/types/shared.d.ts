@@ -1,6 +1,6 @@
 import ZstdDecoder from './zstd-wasm-decoder.js';
 export { default as ZstdDecoder, _MAX_SRC_BUF } from './zstd-wasm-decoder.js';
-import type { StreamResult, ZstdOptions } from './types.js';
+import type { ZstdOptions } from './types.js';
 export declare const _internal: {
     _loader: ((wasmPath?: string) => WebAssembly.Module | Promise<WebAssembly.Module>) | null;
     buffer: {
@@ -13,23 +13,6 @@ export declare const setupZstdDecoder: (options: {
     maxDstSize?: number;
 }) => Promise<void>;
 export declare const createDecoder: (options?: ZstdOptions) => Promise<ZstdDecoder>;
-export declare class ZstdDecompressionStream {
-    /**
-     * The resulting decompressed stream to read output from.
-     * @type {ReadableStream<Uint8Array>}
-     */
-    readonly readable: ReadableStream;
-    /**
-     * The writable end of the stream to pipe compressed chunks into.
-     * @type {WritableStream<BufferSource>}
-     */
-    readonly writable: WritableStream;
-    /**
-     * @param {ZstdOptions} [options] - Optional decoder configuration.
-     */
-    constructor(options?: ZstdOptions);
-}
 export declare const decompress: (input: Uint8Array, _options?: ZstdOptions) => Promise<Uint8Array>;
-export declare const decompressStream: (input: Uint8Array, reset?: boolean, _options?: ZstdOptions) => Promise<StreamResult>;
 export declare const decompressSync: (input: Uint8Array, expectedSize?: number, _options?: ZstdOptions) => Uint8Array;
 //# sourceMappingURL=shared.d.ts.map
