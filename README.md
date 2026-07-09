@@ -6,7 +6,7 @@ Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor 
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Lightweight**      | 38kb / 48kb (zipped) for the size/perf-optimized codec (12 MB linear memory, decoder capped to a 4 MB window — level 9)                                                                                                                              |
 | **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
-| **Compatibility**    | • Simple one-shot `compress` / `decompress` (async + sync) API<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node ≥ 22, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/build.ts) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
+| **Compatibility**    | • Single `ZstdCodec` (sync `compressSync` / `decompressSync`) API<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node ≥ 22, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/build.ts) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
 | **Tested**           | Validated against vectors from the zstd reference implementation. Codec output cross-decoded by the host `zstd` CLI in CI.                                                                                                              |
 | **Zero deps**        | No runtime dependencies (excluding build); compiled from source using latest clang & binaryen                                                                                        |
 
@@ -15,59 +15,34 @@ Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor 
 - For use in browsers, the module is asynchronously compiled & cached at page load.
 - Only the `fast` (lvl 1) strategy is pulled from upstream — heavier strategies (`dfast`/`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported (any `level` other than `1` throws).
 
-## Decompression
-```typescript
-import { decompress, decompressSync, createCodec } 
-from 'zstd-wasm-codec'; // Default (Node/browser - automatically inferred)
+## Usage
 
-import { ... } // For strict CSP policies (no unsafe-eval for WASM)
+The public API is a single `ZstdCodec` class — one instance serves both
+directions, time-sharing one 12 MB buffer. Obtain one via `createCodec()`
+(which loads and caches the wasm module), then call it synchronously.
+
+```typescript
+import { createCodec } from 'zstd-wasm-codec'; // Default (Node/browser - automatically inferred)
+
+import { createCodec } // For strict CSP policies (no unsafe-eval for WASM)
 from 'zstd-wasm-codec/external'; // .wasm fetched from same-origin
 
-import { ... } // If you need the extra perf. (+30%) for +4kb in the browser
+import { createCodec } // If you need the extra perf. (+30%) for +4kb in the browser
 from 'zstd-wasm-codec/perf' // or perf/external
                             // non-browser env uses perf. by default
 ```
-```typescript
-// 1. Simple async decompression
-const data: Uint8Array = await decompress(compressedData);
-```
+
 **Note:** In development mode, the inlined version is served for `/external` to avoid bundler issues (e.g., in Vite).
-```typescript
-// 2. Synchronous decompression (buffer already in memory)
-const out: Uint8Array = decompressSync(compressedData);
 
-// 3. Reusable codec instance — one instance does both directions
-//    (avoids re-acquiring from the pool)
+```typescript
+// One codec instance round-trips both ways, reusable across calls.
 const codec = await createCodec();
-const result1: Uint8Array = codec.decompressSync(data1);
-const result2: Uint8Array = codec.decompressSync(data2);
-```
 
-## Compression
+// Compression — level 1 only (see caveats below).
+const compressed: Uint8Array = codec.compressSync(input);
 
-Compression and decompression are exported from the same module — a single import gives you round-tripping.
-
-```typescript
-import {
-  compress,
-  decompress,
-  compressSync,
-  createCodec,
-  setupZstdCodec,
-} from 'zstd-wasm-codec';                  // Default (Node/browser inferred)
-
-import { ... } from 'zstd-wasm-codec/external';   // .wasm fetched from same-origin
-import { ... } from 'zstd-wasm-codec/perf';       // perf-optimized variant
-```
-
-```typescript
-// 1. Simple compress / decompress round-trip
-const compressed: Uint8Array = await compress(input, { level: 1 });
-const decoded:    Uint8Array = await decompress(compressed);
-
-// 2. Pre-warm + use sync compressSync afterwards (avoids the await on hot paths)
-await setupZstdCodec({ level: 1 });
-const out2: Uint8Array = compressSync(input, { level: 1 });
+// Decompression (buffer already in memory).
+const decoded: Uint8Array = codec.decompressSync(compressed);
 ```
 
 ### Compression caveats

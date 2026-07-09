@@ -15,12 +15,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as zlib from 'node:zlib';
 import snappy from 'snappyjs';
-import {
-  compressSync as wasmCompressSync,
-  decompress as wasmDecompress,
-  decompressSync as wasmDecompressSync,
-  setupZstdCodec,
-} from '../../dist/esm/index.node.js';
+import { createCodec, type ZstdCodec } from '../../dist/esm/index.node.js';
 
 const TESTDATA = join(import.meta.dirname || process.cwd(), '..', '..', 'testdata');
 const BIG_TARGET = join(TESTDATA, 'testdata-big2.json');
@@ -36,9 +31,12 @@ const compressZstd = (buf: Buffer, level: number): Buffer =>
 
 const decompressZstd = (buf: Buffer): Buffer => zlib.zstdDecompressSync(buf);
 
-const compressWasm = (buf: Buffer): Buffer => Buffer.from(wasmCompressSync(buf, { level: 1 }));
+// One codec instance reused across all iterations — constructing a fresh
+// ZstdCodec per call (~1ms) would dominate small-payload timings.
+const codec: ZstdCodec = await createCodec({ level: 1 });
+const compressWasm = (buf: Buffer): Buffer => Buffer.from(codec.compressSync(buf, 1));
 
-const decompressWasm = (buf: Buffer): Buffer => Buffer.from(wasmDecompressSync(buf));
+const decompressWasm = (buf: Buffer): Buffer => Buffer.from(codec.decompressSync(buf));
 
 // --- Bench harness --------------------------------------------------------
 type Row = {
@@ -162,14 +160,6 @@ console.log(`small target: ${SMALL_TARGET}`);
 
 const bigTarget = readFileSync(BIG_TARGET);
 const smallTarget = readFileSync(SMALL_TARGET);
-
-// Pre-warm wasm codec pools. For decoders the pool is only populated via the
-// async decompress() path, so we round-trip a tiny buffer once to seed the
-// pool — otherwise decompressSync constructs a fresh ZstdCodec on every
-// call (~1ms), which dominates small-payload timings.
-const seed = Buffer.from('seed');
-await setupZstdCodec({ level: 1 });
-await wasmDecompress(wasmCompressSync(seed, { level: 1 }));
 
 // Few hundred iterations is plenty for ~1.5 MB inputs; small target gets more.
 benchAll('big commit  (testdata-big2.json — unseen)', bigTarget, 200, 20);

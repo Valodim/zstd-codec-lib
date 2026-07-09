@@ -275,7 +275,7 @@ try {
     env: { ...process.env, FORCE_COLOR: '1' },
   });
 
-  const standaloneDtsFiles = ['types.d.ts', 'index.d.ts'];
+  const standaloneDtsFiles = ['types.d.ts'];
 
   for (const file of standaloneDtsFiles) {
     const srcPath = join(SRC_DIR, file);

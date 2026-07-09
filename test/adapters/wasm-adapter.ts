@@ -11,19 +11,20 @@ const variantMap: Record<string, string> = {
 };
 
 const buildFile = variantMap[TEST_VARIANT] || 'index.node';
-const { createCodec, decompressSync } = await import(`../../dist/esm/${buildFile}.js`);
+const { createCodec } = await import(`../../dist/esm/${buildFile}.js`);
 
 export interface WasmDecoderAdapter {
   decompress(data: Buffer | Uint8Array, options?: ZstdOptions): Promise<Buffer>;
 }
 
+let codec: Awaited<ReturnType<typeof createCodec>>;
+
 export const wasmAdapter: WasmDecoderAdapter = {
-  async decompress(data: Buffer | Uint8Array, options = {}): Promise<Buffer> {
-    const result = decompressSync(data, undefined, options);
-    return Buffer.from(result);
+  async decompress(data: Buffer | Uint8Array): Promise<Buffer> {
+    return Buffer.from(codec.decompressSync(data));
   },
 };
 
 export async function initWasmAdapter(): Promise<void> {
-  await createCodec();
+  codec = await createCodec();
 }

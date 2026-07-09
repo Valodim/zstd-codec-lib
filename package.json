@@ -20,8 +20,8 @@
     "node": ">=22"
   },
   "main": "./dist/esm/index.node.js",
-  "types": "./dist/types/index.d.ts",
-  "typings": "./dist/types/index.d.ts",
+  "types": "./dist/types/index.node.d.ts",
+  "typings": "./dist/types/index.node.d.ts",
   "exports": {
     ".": {
       "types": "./dist/types/index.web.inlined.d.ts",
@@ -58,8 +58,8 @@
     "./wasm": "./dist/esm/zstd.wasm",
     "./wasm-perf": "./dist/esm/zstd-perf.wasm",
     "./types": {
-      "types": "./dist/types/index.d.ts",
-      "default": "./dist/types/index.d.ts"
+      "types": "./dist/types/index.node.d.ts",
+      "default": "./dist/types/index.node.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -78,7 +78,7 @@
         "./dist/types/index.web.d.ts"
       ],
       "types": [
-        "./dist/types/index.d.ts"
+        "./dist/types/index.node.d.ts"
       ]
     }
   },

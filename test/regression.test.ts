@@ -18,6 +18,21 @@ import { hash } from './lib/utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// A codec built from the *unmangled* source module, so tests can reach the
+// internal streaming engine (`_decompressStream`) that the dist bundle mangles
+// away. The old free `decompress()` helper was exactly
+// `codec._decompressStream(input, true, true).buf`; these tests preserve that.
+const perfModule = (): WebAssembly.Module =>
+  new WebAssembly.Module(readFileSync(join(__dirname, '../dist/esm/zstd-perf.wasm')));
+async function makeCodec(opts = {}): Promise<import('../src/zstd-wasm-codec.ts').ZstdCodec> {
+  const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+  return new ZstdCodec(opts).init(perfModule());
+}
+const streamDecode = (
+  codec: import('../src/zstd-wasm-codec.ts').ZstdCodec,
+  input: Uint8Array,
+): Uint8Array => codec._decompressStream(input, true, true).buf;
+
 /**
  * Regression — commit "fix(encoder): commit the CCtx workspace at init; fail
  * cleanly when buffers don't fit". With the workspace committed at a fixed low
@@ -97,6 +112,7 @@ describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
   const SIZE = 12 * 1024 * 1024; // 12 MB decompressed — comfortably over 10 MB
   let data: Buffer;
   let compressed: Buffer;
+  let codec: import('../src/zstd-wasm-codec.ts').ZstdCodec;
 
   // Deterministic, highly-compressible payload: repeating tokens, squashed to a
   // few hundred KB. Compressed one-shot, which declares Frame_Content_Size.
@@ -121,22 +137,19 @@ describe('large highly-compressible frame (>10MB out, <2MB in)', () => {
   }
 
   beforeAll(async () => {
-    const { createCodec } = await import('../dist/esm/index.node.js');
-    await createCodec(); // warm the cached wasm module so decompressSync works
+    codec = await makeCodec();
     data = makeCompressible(SIZE);
     compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
     expect(data.length).toBeGreaterThan(10 * 1024 * 1024);
     expect(compressed.length).toBeLessThan(2 * 1024 * 1024);
   });
 
-  test('decompress() roundtrips', async () => {
-    const { decompress } = await import('../dist/esm/index.node.js');
-    expect(hash(Buffer.from(await decompress(compressed)))).toBe(hash(data));
+  test('streaming decode roundtrips', () => {
+    expect(hash(Buffer.from(streamDecode(codec, compressed)))).toBe(hash(data));
   });
 
-  test('decompressSync() roundtrips', async () => {
-    const { decompressSync } = await import('../dist/esm/index.node.js');
-    expect(hash(Buffer.from(decompressSync(compressed)))).toBe(hash(data));
+  test('decompressSync() roundtrips', () => {
+    expect(hash(Buffer.from(codec.decompressSync(compressed)))).toBe(hash(data));
   });
 });
 
@@ -163,15 +176,14 @@ describe('dictionary-referencing frames are rejected', () => {
     0x42, // payload
   ]);
 
-  test('decompress() fails with a ZSTD error, not garbage output', async () => {
-    const { decompress } = await import('../dist/esm/index.node.js');
-    await expect(decompress(dictFrame)).rejects.toThrow(/dec err/);
+  test('streaming decode fails with a ZSTD error, not garbage output', async () => {
+    const codec = await makeCodec();
+    expect(() => streamDecode(codec, dictFrame)).toThrow(/dec err/);
   });
 
   test('decompressSync() fails likewise', async () => {
-    const { decompressSync, createCodec } = await import('../dist/esm/index.node.js');
-    await createCodec(); // ensure the wasm module is cached
-    expect(() => decompressSync(dictFrame)).toThrow();
+    const codec = await makeCodec();
+    expect(() => codec.decompressSync(dictFrame)).toThrow();
   });
 });
 
@@ -192,11 +204,11 @@ describe('inlined-WASM base64 fallback (no Uint8Array.fromBase64)', () => {
     // delete to force the fallback branch (no Uint8Array.fromBase64)
     delete (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64;
     try {
-      const { createCodec, decompress } = await import('../dist/esm/index.inlined.js');
-      await createCodec(); // triggers the inlined loader → fallback decode + compile
+      const { createCodec } = await import('../dist/esm/index.inlined.js');
+      const codec = await createCodec(); // triggers the inlined loader → fallback decode + compile
       const data = Buffer.from('inlined fallback base64 regression '.repeat(64));
       const compressed = Buffer.from(zlib.zstdCompressSync(data, {}));
-      expect(hash(Buffer.from(await decompress(compressed)))).toBe(hash(data));
+      expect(hash(Buffer.from(codec.decompressSync(compressed)))).toBe(hash(data));
     } finally {
       if (original !== undefined) {
         (Uint8Array as unknown as { fromBase64?: unknown }).fromBase64 = original;
@@ -273,8 +285,7 @@ describe('skippable frames are skipped', () => {
   };
 
   test('one-shot: skippable frame mid-concatenation is dropped', async () => {
-    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-    await createCodec();
+    const codec = await makeCodec();
 
     const a = Buffer.from('AAAA'.repeat(500));
     const b = Buffer.from('BBBB'.repeat(500));
@@ -282,7 +293,7 @@ describe('skippable frames are skipped', () => {
     const fb = Buffer.from(zlib.zstdCompressSync(b, {}));
     const cat = Buffer.concat([fa, skippable(Buffer.from('user metadata — ignore me'), 5), fb]);
 
-    expect(sha(await decompress(cat))).toBe(sha(Buffer.concat([a, b])));
+    expect(sha(codec.decompressSync(cat))).toBe(sha(Buffer.concat([a, b])));
   });
 });
 
@@ -297,11 +308,10 @@ describe('golden decompression — exact output bytes', () => {
 
   for (const file of ['block-128k.zst', 'zeroSeq_2B.zst']) {
     test(`${file} decodes byte-identical to node:zlib`, async () => {
-      const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-      await createCodec();
+      const codec = await makeCodec();
       const comp = readFileSync(join(GOLDEN_DIR, file));
       const expected = Buffer.from(zlib.zstdDecompressSync(comp));
-      expect(hash(Buffer.from(await decompress(comp)))).toBe(hash(expected));
+      expect(hash(Buffer.from(codec.decompressSync(comp)))).toBe(hash(expected));
     });
   }
 });
@@ -337,8 +347,7 @@ describe('size-hint parsing boundaries', () => {
   });
 
   test('concatenated frames exceeding the sync dst buffer stay safe', async () => {
-    const { createCodec, decompress, decompressSync } = await import('../dist/esm/index.node.js');
-    await createCodec();
+    const codec = await makeCodec();
 
     // Each frame declares only ~1 MB (well under the ~9.4 MB sync buffer), but
     // the concatenation totals 12 MB — _fss sees only the first frame's size.
@@ -348,13 +357,13 @@ describe('size-hint parsing boundaries', () => {
     const cat = Buffer.concat(Array.from({ length: N }, () => frame));
     const expected = hash(Buffer.alloc(N * oneMB.length, 0xab));
 
-    // One-shot public `decompress` handles arbitrary totals.
-    expect(hash(Buffer.from(await decompress(cat)))).toBe(expected);
+    // The streaming engine handles arbitrary totals.
+    expect(hash(Buffer.from(streamDecode(codec, cat)))).toBe(expected);
 
     // Single-pass sync must not return corrupt bytes: either exact, or a clean throw.
     let syncResult: string | null = null;
     try {
-      syncResult = hash(Buffer.from(decompressSync(cat)));
+      syncResult = hash(Buffer.from(codec.decompressSync(cat)));
     } catch (e) {
       expect(String(e)).toMatch(/dec err/);
     }
@@ -373,15 +382,14 @@ describe('hostage-byte tail-drain — no truncation at staging-buffer multiples'
   const STAGE = 917501;
 
   test('high-ratio frames around 1–4× the staging stride round-trip', async () => {
-    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-    await createCodec();
+    const codec = await makeCodec();
 
     for (const k of [1, 2, 3, 4]) {
       for (const delta of [-2, -1, 0, 1, 2]) {
         const n = k * STAGE + delta;
         const src = Buffer.alloc(n, 0x5a); // maximally compressible
         const comp = Buffer.from(zlib.zstdCompressSync(src, {}));
-        const out = Buffer.from(await decompress(comp));
+        const out = Buffer.from(streamDecode(codec, comp));
         expect(out.length).toBe(n);
         expect(hash(out)).toBe(hash(src));
       }
@@ -415,42 +423,38 @@ describe('truncated frames throw on the one-shot APIs', () => {
     return Buffer.concat(out); // frame with UNKNOWN content size
   }
 
-  test('declared-content-size frame, tail truncated → decompress() throws', async () => {
-    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-    await createCodec();
+  test('declared-content-size frame, tail truncated → streaming decode throws', async () => {
+    const codec = await makeCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = Buffer.from(zlib.zstdCompressSync(data, {}));
     const truncated = frame.subarray(0, frame.length - 20);
-    await expect(decompress(truncated)).rejects.toThrow(/truncated|dec err/);
+    expect(() => streamDecode(codec, truncated)).toThrow(/truncated|dec err/);
   });
 
-  test('unknown-content-size frame, tail truncated → decompress() throws', async () => {
-    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-    await createCodec();
+  test('unknown-content-size frame, tail truncated → streaming decode throws', async () => {
+    const codec = await makeCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = await unknownSizeFrame(data);
     const truncated = frame.subarray(0, frame.length - 20);
-    await expect(decompress(truncated)).rejects.toThrow(/truncated|dec err/);
+    expect(() => streamDecode(codec, truncated)).toThrow(/truncated|dec err/);
   });
 
   test('unknown-content-size frame, tail truncated → decompressSync() throws', async () => {
-    const { createCodec, decompressSync } = await import('../dist/esm/index.node.js');
-    await createCodec();
+    const codec = await makeCodec();
     const data = mk(3 * 1024 * 1024);
     const frame = await unknownSizeFrame(data);
     const truncated = frame.subarray(0, frame.length - 20);
-    expect(() => decompressSync(truncated)).toThrow(/truncated|dec err/);
+    expect(() => codec.decompressSync(truncated)).toThrow(/truncated|dec err/);
   });
 
   test('a complete frame still round-trips (no false positive)', async () => {
-    const { createCodec, decompress } = await import('../dist/esm/index.node.js');
-    await createCodec();
+    const codec = await makeCodec();
     const data = mk(3 * 1024 * 1024);
     for (const frame of [
       Buffer.from(zlib.zstdCompressSync(data, {})),
       await unknownSizeFrame(data),
     ]) {
-      expect(hash(Buffer.from(await decompress(frame)))).toBe(hash(data));
+      expect(hash(Buffer.from(streamDecode(codec, frame)))).toBe(hash(data));
     }
   });
 });

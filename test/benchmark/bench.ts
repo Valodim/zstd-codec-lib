@@ -1,8 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as zlib from 'node:zlib';
-import { decompress as wasmDecompress } from '../../dist/esm/index.node.js';
+import { createCodec } from '../../dist/esm/index.node.js';
 import { loadCompressedFiles } from './util.js';
+
+const codec = await createCodec();
+const wasmDecompress = (buf: Buffer): Buffer => Buffer.from(codec.decompressSync(buf));
 
 const dir = join(import.meta.dirname || process.cwd(), 'compressed');
 const metaPath = join(dir, 'metadata.json');
