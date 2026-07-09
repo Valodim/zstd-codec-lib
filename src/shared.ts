@@ -104,8 +104,6 @@ export class ZstdDecompressionStream {
     const initialBuffer: Uint8Array[] = [];
     let headerInfo: DZS = { d: 0, u: 0, e: -1 };
     let bytesRead: number = 0;
-    let bytesWritten: number = 0;
-    let bufLen: number = 0;
     let minRecvSize: number = 262144;
 
     const { readable, writable } = new TransformStream<BufferSource, Uint8Array>({
@@ -115,27 +113,29 @@ export class ZstdDecompressionStream {
       ) {
         const data = _toUint8Array(chunk);
         bytesRead += data.length;
-        initialBuffer.push(data);
-        ++bufLen;
+        // Retain compressed chunks only until the decoder is live; once it
+        // exists each chunk is fed incrementally and must not accumulate,
+        // otherwise initialBuffer grows with the entire input.
+        if (!decoder) initialBuffer.push(data);
         // Wait until we have at least enough bytes for a full frame header.
         if (bytesRead < 12) {
           return;
         } else if (headerInfo.e == -1) {
           // Gather all data so far for actual header probing.
-          const headerBuffer = new Uint8Array(bytesRead);
-          let offset = 0;
-          for (let i = 0; i < bufLen; ++i) {
-            headerBuffer.set(initialBuffer[i], offset);
-            offset += initialBuffer[i].length;
-          }
+          const headerBuffer = _concatUint8Arrays(initialBuffer, bytesRead);
           try {
             headerInfo = rzfh(headerBuffer) as DZS;
           } catch (er) {
             controller.error(new err(`dec err ${er}`));
             return;
           }
-          // Adapt minimum receive size depending on header
-          minRecvSize = Math.max(minRecvSize, headerInfo.e, headerInfo.u >> 4, 1 << 17);
+          // Adapt minimum receive size depending on header, but cap it so a
+          // frame declaring a huge (decompressed) content size can't force
+          // buffering the whole compressed input before streaming begins.
+          minRecvSize = Math.min(
+            1 << 20,
+            Math.max(minRecvSize, headerInfo.e, headerInfo.u >> 4, 1 << 17),
+          );
         }
         if (bytesRead < minRecvSize || headerInfo.e == -1) return;
 
@@ -144,7 +144,6 @@ export class ZstdDecompressionStream {
         if (decoder) {
           const result = decoder.decompressStream(data, false).buf;
           if (result.length > 0) {
-            bytesWritten += result.length;
             controller.enqueue(result);
           }
           return;
@@ -161,7 +160,6 @@ export class ZstdDecompressionStream {
 
           const result = decoder.decompressStream(buffered, true).buf;
           if (result.length > 0) {
-            bytesWritten += result.length;
             controller.enqueue(result);
           }
         } catch (er) {
@@ -170,7 +168,10 @@ export class ZstdDecompressionStream {
       },
 
       async flush(controller: TransformStreamDefaultController<Uint8Array>) {
-        if (bytesWritten == 0 && bytesRead > 6) {
+        // Only one-shot here when the decoder was never acquired (input
+        // stayed below minRecvSize). If a decoder exists it already consumed
+        // every chunk incrementally, and initialBuffer no longer holds them.
+        if (!decoder && bytesRead > 6) {
           try {
             const res = await decompressStream(
               _concatUint8Arrays(initialBuffer, bytesRead),
