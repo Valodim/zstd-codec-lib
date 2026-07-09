@@ -68,20 +68,8 @@ CFLAGS += -fslp-vectorize
 # under the heap_cursor reset point.
 # ZSTD_DEPS_NEED_MATH64 enables ZSTD_div64 which compress-side code calls
 # (decoder builds don't need it).
-#
-# Lvl1-only build: drop the dfast strategy entirely (-DZSTD_EXCLUDE_DFAST_*)
-# and shrink the dummy compress in _initialize so workspace is sized
-# for level-1 cParams (windowLog=19, ~1MB workspace) rather than level-3
-# (windowLog=21, ~3MB). Also caps the decoder's maxWindowSize at 4 MB + 1
-# (windowLog=22, level 9): the asymmetry is intentional — we only emit
-# level-1 frames ourselves (windowLog=19, 512 KB), but we still need to
-# decode foreign zstd frames produced by other tools up to level 9.
-# Frames declaring a larger window are rejected with frameParameter_windowTooLarge.
-# Note: upstream auto-clamps strategy=dfast→fast when DFAST is excluded,
-# so callers passing level 2 or 3 silently get fast-strategy output.
-CFLAGS_LVL1_DEFINES = -DZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR -DZSTD_WASM_INIT_LEVEL=1 -DZSTD_WASM_MAX_WINDOW_SIZE=4194305
-CFLAGS_SIZE = $(CFLAGS) -Oz -DZSTD_NO_INLINE -DZSTD_DEPS_NEED_MATH64 -z stack-size=65536 $(CFLAGS_LVL1_DEFINES)
-CFLAGS_PERF = $(CFLAGS) -Os -DZSTD_DEPS_NEED_MATH64 -z stack-size=65536 $(CFLAGS_LVL1_DEFINES)
+CFLAGS_SIZE = $(CFLAGS) -Oz -DZSTD_NO_INLINE -DZSTD_DEPS_NEED_MATH64 -z stack-size=65536
+CFLAGS_PERF = $(CFLAGS) -Os -DZSTD_DEPS_NEED_MATH64 -z stack-size=65536
 
 # _initialize is the entry (the"ultra minimal" ZSTD_createDCtx)
 # LDFLAGS = -Wl,--no-entry

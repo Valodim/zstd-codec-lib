@@ -1,12 +1,12 @@
 /**
  * \file zstd_wasm_full.c
- * Full decoder plus a level-1 compressor (fast strategy only; the build
- * excludes dfast via ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR, see Makefile).
+ * Full decoder plus a level-1 compressor (fast strategy only; dfast and the
+ * heavier strategies are excluded below via ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR).
  *
- * Heavy strategies (greedy/lazy/lazy2/btlazy2/btopt/btultra*) are excluded
- * via upstream's ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR macros, which collapse the
- * static dispatch table entries to NULL so --gc-sections + LTO drop their
- * code paths entirely.
+ * Those strategies (dfast/greedy/lazy/lazy2/btlazy2/btopt/btultra*) are
+ * excluded via upstream's ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR macros, which
+ * collapse the static dispatch table entries to NULL so --gc-sections + LTO
+ * drop their code paths entirely.
  *
  * Decoder exports: setHeapEnd / decompressStreamStep / resetDecoder /
  *                  decompress.
@@ -29,13 +29,17 @@
 #undef  XXH_INLINE_ALL
 #define XXH_INLINE_ALL
 
-/* Strip every strategy except fast (lvl 1-2) and double_fast (lvl 3). */
+/* Strip every strategy except fast, making this a level-1-only codec.
+ * double_fast (lvl 3) is excluded here too — levels 2/3 are auto-clamped to
+ * the fast strategy by upstream. The excluded strategies collapse to NULL
+ * dispatch-table entries that --gc-sections + LTO drop entirely. */
 #define ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR
 #define ZSTD_EXCLUDE_LAZY_BLOCK_COMPRESSOR
 #define ZSTD_EXCLUDE_LAZY2_BLOCK_COMPRESSOR
 #define ZSTD_EXCLUDE_BTLAZY2_BLOCK_COMPRESSOR
 #define ZSTD_EXCLUDE_BTOPT_BLOCK_COMPRESSOR
 #define ZSTD_EXCLUDE_BTULTRA_BLOCK_COMPRESSOR
+#define ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR
 
 #include "stddef.h"
 #include "stdint.h"
@@ -195,8 +199,8 @@ void* memset(void* s, int c, size_t n)               { return __builtin_memset(s
 void* memmove(void* dest, const void* src, size_t n) { return __builtin_memmove(dest, src, n); }
 
 /* CCtx singleton. Allocated once during _initialize via the bump
- * allocator, sized for level 3 (worst case in our supported range).
- * Lower levels reuse the same workspace via ZSTD_CCtx_reset. */
+ * allocator, sized from ZSTD_WASM_INIT_LEVEL (level 1 in the shipped build).
+ * Other supported levels reuse the same workspace via ZSTD_CCtx_reset. */
 static ZSTD_CCtx* cctx;
 
 WASM_EXPORT
@@ -207,9 +211,11 @@ void resetDecoder(void) {
     dctx->format = ZSTD_f_zstd1;
 }
 
-#ifndef ZSTD_WASM_MAX_WINDOW_SIZE
-#define ZSTD_WASM_MAX_WINDOW_SIZE 8388609 /* level 19: 8 MB + 1 */
-#endif
+/* Decoder window cap. 4 MB + 1 (windowLog 22, level 9). */
+#define ZSTD_WASM_MAX_WINDOW_SIZE 4194305
+
+/* Level whose cParams size the committed workspace. */
+#define ZSTD_WASM_INIT_LEVEL 1
 
 void _initialize(void) {
     /* Decoder side: same hand-folded ZSTD_createDCtx as the decoder build. */
@@ -236,9 +242,6 @@ void _initialize(void) {
      * allocator is bounds-checked, so an over-budget maxSrcSize
      * configuration surfaces as a catchable ZSTD memory_allocation error
      * rather than an out-of-bounds write. */
-#ifndef ZSTD_WASM_INIT_LEVEL
-#define ZSTD_WASM_INIT_LEVEL 3
-#endif
     cctx = ZSTD_createCCtx();
     ZSTD_compressBegin(cctx, ZSTD_WASM_INIT_LEVEL);
 }
