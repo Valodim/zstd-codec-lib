@@ -1,33 +1,4 @@
 import type { EncoderOptions } from './types.js';
-/**
- * ╔══════════════════════════════════════════════════════════════╗
- * ║                  Codec Memory Layout                         ║
- * ╠══════════════════════════════════════════════════════════════╣
- * ║   0x00000  ┌────────────────────────────────────┐            ║
- * ║            │      Stack Space (64 KB)           │            ║
- * ║   0x10000  ├────────────────────────────────────┤            ║
- * ║            │   Stream structs (32 b):           │            ║
- * ║            │     in_buffer  (16 b)              │            ║
- * ║            │     out_buffer (16 b)              │            ║
- * ║            │   Shared between decode + encode.  │            ║
- * ║            │   Address = exports.getInBufferPtr()           ║
- * ║   0x10020  ├────────────────────────────────────┤            ║
- * ║            │   Static ZSTD_DCtx (~96 KB)        │            ║
- * ║            │   + read-only constants            │            ║
- * ║            ├────────────────────────────────────┤            ║
- * ║   0x40000  │   pb-reset point (262144)          │            ║
- * ║            ├────────────────────────────────────┤            ║
- * ║            │   ZSTD_CCtx + cwksp workspace      │            ║
- * ║            │   (~1 MB at level 1)               │            ║
- * ║            ├────────────────────────────────────┤            ║
- * ║            │   Source buffer (compressing)      │            ║
- * ║            │   Destination buffer               │            ║
- * ║            │     For compress:    ~src + bound  │            ║
- * ║            │     For decompress:  up to ~9.4 MB │            ║
- * ║   ~12 MB   └────────────────────────────────────┘            ║
- * ╚══════════════════════════════════════════════════════════════╝
- */
-declare const _CODEC_PB_RESET = 262144;
 declare class ZstdEncoder {
     private _exports;
     private _HEAPU8;
@@ -71,6 +42,6 @@ declare class ZstdEncoder {
     _destroy(): void;
 }
 export default ZstdEncoder;
-export { ZstdEncoder, _CODEC_PB_RESET };
+export { ZstdEncoder };
 export type { EncoderOptions } from './types.js';
 //# sourceMappingURL=zstd-wasm-encoder.d.ts.map

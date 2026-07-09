@@ -200,10 +200,7 @@ export declare class ZstdCompressionStream {
  * @param input - Uncompressed input.
  * @param options - Optional compression options (level must be 1).
  */
-export declare function compress(
-  input: Uint8Array,
-  options?: CodecOptions,
-): Promise<Uint8Array>;
+export declare function compress(input: Uint8Array, options?: CodecOptions): Promise<Uint8Array>;
 
 /**
  * Synchronously compress a buffer. Requires the codec to be initialized
