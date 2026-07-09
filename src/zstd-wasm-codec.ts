@@ -180,6 +180,13 @@ class ZstdCodec {
   /**
    * Single-shot compression. Returns a freshly-allocated Uint8Array.
    * Falls back to streaming when the input exceeds maxSrcSize.
+   *
+   * Not equivalent to routing through _compressStream — kept as the fast path:
+   *  • ZSTD_compressCCtx pledges srcSize, so the frame header carries the
+   *    Frame_Content_Size. The streaming path leaves FCS unknown, which would
+   *    defeat decompressSync's _fss fast-path detection on self-round-trips.
+   *  • uses only the committed CCtx workspace: no lazily-malloc'd CStream
+   *    staging, no setHeapEnd, no chunk concatenation.
    */
   compressSync(input: Uint8Array, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');
@@ -199,6 +206,13 @@ class ZstdCodec {
    * Internal streaming compress engine — not part of the public API. Drains
    * the input and ends the frame, returning the full compressed output. Used
    * only as the fallback for compressSync when input exceeds maxSrcSize.
+   *
+   * Safe only because it runs to completion within one call. Exposing it for
+   * incremental use (reset=false across calls) would require concurrency
+   * discipline: it shares the in/out stream structs, the singleton cctx/dctx,
+   * and the _srcPtr arena + heap cursor with the decode engine, so a second
+   * op interleaved into a partial stream corrupts all three. Only one stream
+   * may be in flight per instance.
    */
   _compressStream(input: Uint8Array, reset = true, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');
@@ -264,6 +278,11 @@ class ZstdCodec {
    * streaming engine when the expected size is not hinted in advance or is
    * too large for the sync dst buffer.
    *
+   * Not equivalent to _decompressStream — kept as the fast path: the C
+   * `decompress`/`dm` runs ZSTD_decompressFrame straight into the destination,
+   * with no window-sized inBuff/outBuff allocation, no copy through staging, and
+   * no chunk concatenation. The streaming engine incurs all three.
+   *
    * Limitation — concatenated multi-frame input: the output size is inferred
    * via `_fss`, which reads only the FIRST frame's declared Frame_Content_Size.
    * When several frames are concatenated and that first frame declares a size
@@ -302,6 +321,13 @@ class ZstdCodec {
   /**
    * Internal streaming decompress engine — not part of the public API. Fed the
    * whole input at once with final=true for one-shot decodes.
+   *
+   * Safe only because it runs to completion within one call. Exposing it for
+   * incremental use (reset=false across calls) would require concurrency
+   * discipline: it shares the in/out stream structs, the singleton dctx/cctx,
+   * and the _srcPtr arena + heap cursor with the compress engine, so a second
+   * op interleaved into a partial stream corrupts all three. Only one stream
+   * may be in flight per instance.
    */
   _decompressStream(input: Uint8Array, reset = false, final = false): StreamResult {
     if (!this._exports) throw new err('not init');
