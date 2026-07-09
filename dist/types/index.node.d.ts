@@ -1,4 +1,3 @@
-export { createDecoder, decompress, decompressSync, setupZstdDecoder, ZstdDecoder, } from './shared.js';
-export { compress, compressSync, createEncoder, setupZstdCodec, ZstdEncoder, } from './encoder-shared.js';
-export type { DecoderOptions, EncoderOptions, CodecOptions } from './types.js';
+export { createCodec, ZstdCodec } from './codec-shared.js';
+export type { CodecOptions, ZstdOptions } from './types.js';
 //# sourceMappingURL=index.node.d.ts.map
