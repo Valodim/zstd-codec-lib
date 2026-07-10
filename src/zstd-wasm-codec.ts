@@ -18,16 +18,17 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
  * ║   0x10000  stream structs: in_buffer(16) + out_buffer(16)  ── shared       ║
  * ║            address = exports.getInBufferPtr()                              ║
  * ║   0x10020  static ZSTD_DCtx (~96 KB) + rodata           ── decode-only     ║
- * ║   0x40000  CCtx cwksp workspace (~1 MB, ZSTD_compressBegin)  ── persistent ║
+ * ║   0x40000  CCtx cwksp (~1 MB, ZSTD_compressBegin) — pins H0 at init        ║
  * ║      H0    heap cursor after _initialize  ── top of per-instance state     ║
  * ║   ────────────────────────────────────────────────────────────────         ║
  * ║   [ H0 ................................. 12 MB ]  SHARED WORKING ARENA     ║
  * ║                                                                            ║
- * ║  Two invariants keep the two contexts from stepping on each other:         ║
- * ║   • decode's arena starts at H0, so decode never touches [0x40000, H0)     ║
- * ║     — the CCtx workspace survives across decodes.                          ║
- * ║   • compress's workspace starts at 0x40000 (above the DCtx), so            ║
- * ║     compress never touches the DCtx.                                       ║
+ * ║  How the two directions coexist (they never run at once):                  ║
+ * ║   • the CCtx workspace committed at init only pins H0; every compress      ║
+ * ║     op frees it and rebuilds it above the compress output (setHeapEnd),    ║
+ * ║     so the copy at 0x40000 is abandoned after the first compress.          ║
+ * ║   • each op re-anchors its own allocations before running, so neither      ║
+ * ║     relies on state the other clobbered; compress never touches DCtx.      ║
  * ║                                                                            ║
  * ║  Arena anchors (all relative to _srcPtr === H0):                           ║
  * ║   • _srcPtr    = H0                     shared input anchor (both dirs)    ║
@@ -40,7 +41,8 @@ import { _fss, err, _concatUint8Arrays } from './utils.js';
  * ║     deterministically regardless of a prior decode.                        ║
  * ║   • before decompress: setHeapEnd(_dstPtrDec) so the decoder's inBuff/     ║
  * ║     outBuff land above the decompress output.                              ║
- * ║   • sync compress uses only the committed CCtx workspace (no malloc).      ║
+ * ║   • sync compress also setHeapEnd's; ZSTD_compressCCtx then rebuilds       ║
+ * ║     the single-shot workspace there (no staging, no concatenation).        ║
  * ╚════════════════════════════════════════════════════════════════════════════╝
  *
  * Level-9 decoder memory budget reference (windowLog 22 → 4 MB window):
@@ -197,8 +199,10 @@ class ZstdCodec {
    *  • ZSTD_compressCCtx pledges srcSize, so the frame header carries the
    *    Frame_Content_Size. The streaming path leaves FCS unknown, which would
    *    defeat decompressSync's _fss fast-path detection on self-round-trips.
-   *  • uses only the committed CCtx workspace: no lazily-malloc'd CStream
-   *    staging, no setHeapEnd, no chunk concatenation.
+   *  • no lazily-malloc'd CStream input/output staging and no chunk
+   *    concatenation — just the single-shot workspace, which the C
+   *    `compress` frees and rebuilds. It still setHeapEnd's first, to anchor
+   *    that rebuilt workspace deterministically above the compress output.
    */
   compressSync(input: Uint8Array, level?: number): Uint8Array {
     if (!this._exports) throw new err('not init');

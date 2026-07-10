@@ -225,8 +225,12 @@ void _initialize(void) {
     setHeapEnd(262144);
 
     /* Encoder side: create the CCtx and commit its cwksp workspace *now*,
-     * before JS starts malloc-ing src/dst buffers, so the workspace sits at
-     * a fixed low address and subsequent JS-side malloc()s land past it.
+     * before JS starts malloc-ing src/dst buffers, so the heap cursor (H0)
+     * comes to rest above the workspace and subsequent JS-side malloc()s land
+     * past it. Note the workspace committed here does NOT stay resident: every
+     * compress()/initCompressor() frees it and rebuilds it at the JS-anchored
+     * cursor (above the compress output), so this init-time copy is abandoned
+     * after the first compress. Its lasting purpose is only to fix H0.
      *
      * ZSTD_compressBegin() is the right primitive: it sizes the workspace
      * from the level's cParams with pledgedSrcSize=ZSTD_CONTENTSIZE_UNKNOWN,
