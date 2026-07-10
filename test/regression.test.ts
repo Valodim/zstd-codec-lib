@@ -513,6 +513,21 @@ describe('truncated frames throw on the one-shot APIs', () => {
  * streaming decode path), plus the explicit expectedSize argument.
  */
 describe('scenario coverage: window cap, bomb guard, _fss magic, maxSrcSize, expectedSize', () => {
+  test('decompressSync handles a leading skippable frame (non-zstd magic in _fss)', async () => {
+    const codec = await makeCodec();
+    const real = Buffer.from('the quick brown fox jumps over 42 dogs. '.repeat(400));
+    const frame = Buffer.from(zlib.zstdCompressSync(real, {}));
+    // Skippable frame FIRST: magic 0x184D2A50 + LE32 size + payload. Its size
+    // byte (0xC8) would be misread as an fcf=3 FCS descriptor by a magic-blind
+    // _fss, yielding a bogus expected size.
+    const payload = Buffer.alloc(200, 0xff);
+    const skip = Buffer.alloc(8);
+    skip.writeUInt32LE(0x184d2a50, 0);
+    skip.writeUInt32LE(payload.length, 4);
+    const cat = new Uint8Array(Buffer.concat([skip, payload, frame]));
+    expect(hash(Buffer.from(codec.decompressSync(cat)))).toBe(hash(real));
+  });
+
   test('non-positive / NaN maxSrcSize throws (never silently defaults or hangs)', async () => {
     const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
     for (const bad of [0, -1, Number.NaN]) {
@@ -524,4 +539,41 @@ describe('scenario coverage: window cap, bomb guard, _fss magic, maxSrcSize, exp
     const src = Buffer.from('x'.repeat(2000));
     expect(hash(Buffer.from(c.decompressSync(c.compressSync(src))))).toBe(hash(src));
   });
+});
+
+test('rejects a frame whose declared window exceeds the 4 MB cap (both paths)', async () => {
+  const codec = await makeCodec();
+  // Non-single-segment + Window_Descriptor 0x68 => windowLog 23 (8 MB). No FCS,
+  // so _fss => 0 => streaming decode path.
+  const viaStream = Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x68]);
+  expect(() => codec.decompressSync(viaStream)).toThrow(/dec err/);
+  expect(() => streamDecode(codec, viaStream)).toThrow(/dec err/);
+  // Single-segment, 4-byte FCS = 5 MB (> cap, < sync buffer) => single-pass dm().
+  const viaSinglePass = Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd, 0xa0, 0x00, 0x00, 0x50, 0x00]);
+  expect(() => codec.decompressSync(viaSinglePass)).toThrow(/dec err/);
+});
+
+test('bomb guard trips incrementally on the streaming decode path', async () => {
+  // Unknown-content-size frame => _fss = 0 => streaming decode, so the
+  // pre-decode size check can't reject; the incremental guard must.
+  const data = Buffer.alloc(3 * 1024 * 1024, 0x5a);
+  const z = zlib.createZstdCompress();
+  const parts: Buffer[] = [];
+  const done = new Promise<void>((res) => z.on('end', () => res()));
+  z.on('data', (d: Buffer) => parts.push(d));
+  z.end(data);
+  await done;
+  const frame = new Uint8Array(Buffer.concat(parts));
+
+  const guarded = await makeCodec({ maxDecompressedSize: 1024 * 1024 });
+  expect(() => guarded.decompressSync(frame)).toThrow(/maxDstSize/);
+  const roomy = await makeCodec({ maxDecompressedSize: 8 * 1024 * 1024 });
+  expect(hash(Buffer.from(roomy.decompressSync(frame)))).toBe(hash(data));
+});
+
+test('explicit expectedSize argument decodes correctly', async () => {
+  const codec = await makeCodec();
+  const data = Buffer.from('caller supplies the size hint. '.repeat(1000));
+  const frame = new Uint8Array(zlib.zstdCompressSync(data, {}));
+  expect(hash(Buffer.from(codec.decompressSync(frame, data.length)))).toBe(hash(data));
 });
