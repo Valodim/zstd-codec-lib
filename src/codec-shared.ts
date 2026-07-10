@@ -18,6 +18,10 @@ export const _internal = {
 
 let cachedModule: WebAssembly.Module | null = null;
 
+// The compiled module is cached module-wide after the first load, so `wasmPath`
+// is first-call-wins: only the first createCodec() that triggers a load uses
+// its path; later calls reuse the cached module and silently ignore any
+// different `wasmPath`. (One bundle => one wasm variant, so this is intended.)
 async function _loadModule(wasmPath?: string): Promise<WebAssembly.Module> {
   if (cachedModule) return cachedModule;
   if (!_internal._loader) throw new err('codec loader not set');

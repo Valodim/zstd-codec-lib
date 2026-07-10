@@ -72,7 +72,11 @@ export interface CodecOptions {
    *  to a large finite floor. */
   maxDecompressedSize?: number;
 
-  /** Path to the WASM module (overrides default loader URL) */
+  /** Path to the WASM module (overrides default loader URL).
+   *  Honored only by the web / external loaders — the Node loader always
+   *  loads the bundled wasm. Also first-call-wins: the compiled module is
+   *  cached after the first `createCodec`, so a `wasmPath` passed to later
+   *  calls is ignored. */
   wasmPath?: string;
 }
 
@@ -80,7 +84,8 @@ export interface CodecOptions {
  * Options for codec helper functions.
  */
 export interface ZstdOptions {
-  /** Path to the WASM module */
+  /** Path to the WASM module. Honored only by the web / external loaders, and
+   *  only on the first `createCodec` (the compiled module is cached after). */
   wasmPath?: string;
 }
 
