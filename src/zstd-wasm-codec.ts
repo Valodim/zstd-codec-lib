@@ -320,7 +320,7 @@ class ZstdCodec {
     if (!this._exports) throw new err('not init');
 
     const srcSize = compressedData.length;
-    if (srcSize > this._maxDecSrc) throw new err(`comp dat>maxSrcSize lim`);
+    if (srcSize > this._maxDecSrc) throw new err(`comp dat>maxCompressedSize lim`);
 
     if (!expectedSize) expectedSize = _fss(compressedData);
 

@@ -144,7 +144,7 @@ describe('decompression-bomb guards default finite but stay tightenable', () => 
     const raw = compressible(512 * 1024);
     const frame = Buffer.from(zlib.zstdCompressSync(raw, {}));
     const guarded = await makeCodec({ maxCompressedSize: 8 });
-    expect(() => guarded.decompressSync(frame)).toThrow(/maxSrcSize/);
+    expect(() => guarded.decompressSync(frame)).toThrow(/maxCompressedSize/);
   });
 });
 
