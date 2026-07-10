@@ -60,7 +60,8 @@ export interface CodecOptions {
   level?: 1;
 
   /** Maximum (uncompressed) input for one sync compress. Sizes the compress
-   *  buffers; larger inputs fall back to streaming. Defaults to 4 MiB. */
+   *  buffers; larger inputs fall back to streaming. Defaults to 4 MiB when
+   *  omitted; a non-positive or NaN value throws. */
   maxSrcSize?: number;
 
   /** Decompression-bomb guard: maximum compressed input accepted. Defaults to

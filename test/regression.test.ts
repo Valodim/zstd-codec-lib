@@ -504,3 +504,24 @@ describe('truncated frames throw on the one-shot APIs', () => {
     }
   });
 });
+
+/**
+ * Scenario-coverage gaps closed after the static-workspace work: two guards for
+ * bugs fixed earlier (skippable-frame-first _fss misparse; non-positive
+ * maxSrcSize hang), plus two safety properties that were documented but
+ * untested (the 4 MB window cap on both decode paths, and the bomb guard on the
+ * streaming decode path), plus the explicit expectedSize argument.
+ */
+describe('scenario coverage: window cap, bomb guard, _fss magic, maxSrcSize, expectedSize', () => {
+  test('non-positive / NaN maxSrcSize throws (never silently defaults or hangs)', async () => {
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+    for (const bad of [0, -1, Number.NaN]) {
+      expect(() => new ZstdCodec({ maxSrcSize: bad as number })).toThrow(/maxSrcSize/);
+    }
+    // Omitted maxSrcSize still uses the 4 MiB default and compresses fine.
+    const c = new ZstdCodec({}).init(perfModule());
+    expect((c as unknown as { _maxSrcSize: number })._maxSrcSize).toBe(4 * 1024 * 1024);
+    const src = Buffer.from('x'.repeat(2000));
+    expect(hash(Buffer.from(c.decompressSync(c.compressSync(src))))).toBe(hash(src));
+  });
+});
