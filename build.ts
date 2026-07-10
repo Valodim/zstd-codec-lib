@@ -132,7 +132,7 @@ const configs: Array<{
     entry: join(SRC_DIR, 'zstd-wasm-codec.ts'),
     outfile: 'zstd-wasm-codec.js',
     target: 'browser',
-    minify: true,
+    minify: false,
   },
   {
     name: 'Core Library (minified)',
@@ -151,7 +151,7 @@ for (const config of configs) {
     format: 'esm',
     conditions: config.target === 'browser' ? ['browser', 'import'] : ['node', 'import'],
     naming: config.outfile,
-    sourcemap: 'linked',
+    sourcemap: 'none',
     packages: 'external',
     external: config.external || [],
     emitDCEAnnotations: true,
@@ -161,7 +161,7 @@ for (const config of configs) {
   if (!result.success) {
     console.error(`Failed to build ${config.name}`);
     for (const log of result.logs) console.error(log);
-    continue;
+    process.exit(1);
   }
 
   if (config.minify) {
@@ -236,26 +236,30 @@ async function buildInlined(variant: 'size' | 'perf') {
     format: 'esm',
     minify: true,
     naming: `${stem}${suffix}.js`,
-    sourcemap: 'linked',
+    sourcemap: 'none',
     external: [],
     emitDCEAnnotations: true,
     drop: ['console', 'debugger'],
   });
 
-  if (result.success) {
-    const filePath = join(ESM_DIR, `${stem}${suffix}.js`);
-    let code = readFileSync(filePath, 'utf8');
-    code = code.replace('__WASM_BASE64_PLACEHOLDER__', base64);
-    writeFileSync(filePath, code);
+  if (!result.success) {
+    console.error(`Failed to build inlined ${variant} variant`);
+    for (const log of result.logs) console.error(log);
+    process.exit(1);
+  }
 
-    const minified = await minify(code, terserOptions);
-    if (minified.code) {
-      writeFileSync(join(ESM_DIR, `${stem}${suffix}.min.js`), minified.code);
-      const gzipBytes = gzipSync(minified.code, { level: 6 }).length;
-      console.log(
-        `Built (minified): ${stem}${suffix}.min.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
-      );
-    }
+  const filePath = join(ESM_DIR, `${stem}${suffix}.js`);
+  let code = readFileSync(filePath, 'utf8');
+  code = code.replace('__WASM_BASE64_PLACEHOLDER__', base64);
+  writeFileSync(filePath, code);
+
+  const minified = await minify(code, terserOptions);
+  if (minified.code) {
+    writeFileSync(join(ESM_DIR, `${stem}${suffix}.min.js`), minified.code);
+    const gzipBytes = gzipSync(minified.code, { level: 6 }).length;
+    console.log(
+      `Built (minified): ${stem}${suffix}.min.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
+    );
   }
 }
 

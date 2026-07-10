@@ -135,7 +135,7 @@
     "ci:postinstall:browsers": "playwright install --with-deps chromium firefox webkit"
   },
   "resolutions": {
-    "esbuild": "0.27.7"
+    "esbuild": "0.28.1"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

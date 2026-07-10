@@ -10,9 +10,6 @@ node_modules
 /src/LICENSE
 .yarn/
 .pnp.*
-/tests/benchmark/compressed/*.zst
-/tests/benchmark/compressed/*.json
-/tests/data/*.json
 /test/benchmark/compressed/*.zst
 /test/benchmark/compressed/*.json
 /test/data/*.json

@@ -24,8 +24,6 @@
     "**/*.yml",
     "**/*.yaml",
     "**/*.json",
-    "**/src/utils.ts",
-    "**/src/zstd-wasm-decoder.ts",
-    "**/src/shared.ts"
+    "**/src/utils.ts"
   ]
 }

@@ -150,7 +150,7 @@ WASM_OPT_FLAGS_EXTRA = \
 WASM_OPT_FLAGS_SIZE = $(WASM_OPT_FLAGS_PRE) -Oz $(WASM_OPT_FLAGS_COMMON) $(WASM_OPT_FLAGS_EXTRA)
 WASM_OPT_FLAGS_PERF = $(WASM_OPT_FLAGS_PRE) $(WASM_OPT_FLAGS_COMMON) $(WASM_OPT_FLAGS_EXTRA) -Os
 
-.PHONY: all clean check-tools test tests regenerate-amalgamated help size perf
+.PHONY: all clean check-tools test regenerate-amalgamated help size perf
 
 all: check-tools size perf
 

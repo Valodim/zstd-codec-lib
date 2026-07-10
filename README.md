@@ -27,7 +27,7 @@ import { createCodec } from 'zstd-wasm-codec'; // Default (Node/browser - automa
 import { createCodec } // For strict CSP policies (no unsafe-eval for WASM)
 from 'zstd-wasm-codec/external'; // .wasm fetched from same-origin
 
-import { createCodec } // If you need the extra perf. (+30%) for +4kb in the browser
+import { createCodec } // If you need the extra perf. (+30%) for +10kb in the browser
 from 'zstd-wasm-codec/perf' // or perf/external
                             // non-browser env uses perf. by default
 ```
@@ -70,8 +70,9 @@ const decoded: Uint8Array = codec.decompressSync(compressed);
 
 **macOS:**
 ```bash
-brew install llvm binaryen pnpm zopfli
+brew install llvm binaryen zopfli
 ```
+(Yarn berry is provided via Corepack, which ships with Node.)
 
 **Linux:**
 ```bash
@@ -88,7 +89,7 @@ source, or download the binaries (as done by the [CI runner](https://github.com/
 ```bash
 git clone --recursive https://github.com/tadpole-labs/zstd-codec-lib.git
 cd zstd-codec-lib
-pnpm install
+yarn install
 ```
 
 2. **Configure LLVM path** (if not auto-detected):
