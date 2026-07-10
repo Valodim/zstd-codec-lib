@@ -305,13 +305,14 @@ class ZstdCodec {
    * Limitation — concatenated multi-frame input: the output size is inferred
    * via `_fss`, which reads only the FIRST frame's declared Frame_Content_Size.
    * When several frames are concatenated and that first frame declares a size
-   * within the sync buffer (`_maxDstBuf`, ~9.4 MB) while the compressed input
-   * stays under `_MAX_SRC_BUF` (2 MB), the single-pass path is chosen — but the
-   * *total* decompressed output across all frames can exceed the ~9.4 MB sync
-   * buffer (e.g. many highly-compressible frames). In that case the decode
-   * throws a clean `dec err` (dstSize_tooSmall) rather than returning partial
-   * or corrupt bytes; it never silently truncates. A single frame is never
-   * affected — its own declared/unknown size routes large outputs to streaming.
+   * within the sync buffer (`_maxDstBuf`, ~8.2 MB in the default layout) while
+   * the compressed input stays under `_MAX_SRC_BUF` (2 MB), the single-pass
+   * path is chosen — but the *total* decompressed output across all frames can
+   * exceed the ~8.2 MB sync buffer (e.g. many highly-compressible frames). In
+   * that case the decode throws a clean `dec err` (dstSize_tooSmall) rather
+   * than returning partial or corrupt bytes; it never silently truncates. A
+   * single frame is never affected — its own declared/unknown size routes
+   * large outputs to streaming.
    * Callers that decode externally-concatenated, high-ratio streams of unknown
    * total size should not rely on this method for those inputs.
    */
