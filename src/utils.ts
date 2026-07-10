@@ -20,6 +20,13 @@ export const rb = (d: Uint8Array, b: number, n: number) => {
 };
 
 export const _fss = (dat: Uint8Array): number => {
+  // Only a real zstd frame (magic 0xFD2FB528) carries a Frame_Content_Size at
+  // a fixed offset. Skippable frames (magic 0x184D2A5x) and any other leading
+  // bytes would make the byte-4 read below a meaningless descriptor, so bail
+  // to "unknown" (0) and let the streaming decoder walk frames one by one.
+  // rb() is unsigned and reads out-of-range bytes as NaN, so short inputs also
+  // fall through here.
+  if (rb(dat, 0, 4) !== 0xfd2fb528) return 0;
   const flg = dat[4];
   const ss = (flg >> 5) & 1,
     df = flg & 3,
