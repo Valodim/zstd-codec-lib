@@ -64,12 +64,19 @@ describe('encoder fails cleanly when buffers do not fit', () => {
 });
 
 /**
- * Regression — commit "fix(decoder): default size limits to a finite value
- * instead of NaN". A bare `new ZstdCodec()` used to compute
- * Math.max(undefined, floor) = NaN, and `x > NaN` is always false, silently
- * disabling both the input-size guard and the decompression-bomb output guard.
+ * Regression — decompression-bomb guards.
+ *
+ * Two bugs, both in the constructor's limit computation:
+ *  1. A bare `new ZstdCodec()` once computed Math.max(undefined, floor) = NaN,
+ *     and `x > NaN` is always false, silently disabling both guards.
+ *  2. The follow-up fix used `Math.max(userValue, floor)`, which made the floor
+ *     a hard *minimum*: a caller asking for a tight guard (e.g. 1 MB) was
+ *     silently raised to ~629 MB, so the documented "maximum accepted" guard
+ *     could only ever be loosened, never tightened.
+ * The guard must default to the finite floor when unset, yet honor any positive
+ * value a caller supplies — including one below the floor.
  */
-describe('decoder default size limits are finite (not NaN)', () => {
+describe('decompression-bomb guards default finite but stay tightenable', () => {
   // _MAX_DST_BUF_DEFAULT (9_830_464) * 64 — the finite floor the constructor
   // must apply when no decompression-guard options are given.
   const FLOOR = 9830464 * 64;
@@ -83,15 +90,15 @@ describe('decoder default size limits are finite (not NaN)', () => {
     expect(dec._maxDecDst).toBe(FLOOR);
   });
 
-  test('explicit limits below the floor clamp up; larger ones win', async () => {
+  test('explicit positive limits are honored verbatim, including below the floor', async () => {
     const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
     type Limits = { _maxDecSrc: number; _maxDecDst: number };
     const small = new ZstdCodec({
-      maxCompressedSize: 1,
-      maxDecompressedSize: 1,
+      maxCompressedSize: 1000,
+      maxDecompressedSize: 1000,
     }) as unknown as Limits;
-    expect(small._maxDecSrc).toBe(FLOOR);
-    expect(small._maxDecDst).toBe(FLOOR);
+    expect(small._maxDecSrc).toBe(1000);
+    expect(small._maxDecDst).toBe(1000);
     const big = FLOOR * 2;
     const large = new ZstdCodec({
       maxCompressedSize: big,
@@ -99,6 +106,45 @@ describe('decoder default size limits are finite (not NaN)', () => {
     }) as unknown as Limits;
     expect(large._maxDecSrc).toBe(big);
     expect(large._maxDecDst).toBe(big);
+  });
+
+  test('non-positive / NaN limits fall back to the floor (guard never disabled)', async () => {
+    const { ZstdCodec } = await import('../src/zstd-wasm-codec.ts');
+    type Limits = { _maxDecSrc: number; _maxDecDst: number };
+    for (const bad of [0, -1, Number.NaN]) {
+      const c = new ZstdCodec({
+        maxCompressedSize: bad,
+        maxDecompressedSize: bad,
+      }) as unknown as Limits;
+      expect(c._maxDecSrc).toBe(FLOOR);
+      expect(c._maxDecDst).toBe(FLOOR);
+    }
+  });
+
+  // Highly-compressible payload: declared Frame_Content_Size == size, but
+  // compressed to a few bytes — so it takes the single-pass sync decode path.
+  const compressible = (size: number): Buffer => Buffer.alloc(size, 0x61);
+
+  test('a tight maxDecompressedSize actually rejects an over-limit frame', async () => {
+    // 1 MB of highly-compressible data → declared FCS 1 MB, compressed to a few
+    // hundred bytes (small enough for the single-pass sync decode path).
+    const raw = compressible(1024 * 1024);
+    const frame = Buffer.from(zlib.zstdCompressSync(raw, {}));
+
+    // Guard set below the frame's decompressed size: must reject.
+    const guarded = await makeCodec({ maxDecompressedSize: 256 * 1024 });
+    expect(() => guarded.decompressSync(frame)).toThrow(/maxDstSize/);
+
+    // Guard comfortably above it: must decode normally.
+    const roomy = await makeCodec({ maxDecompressedSize: 4 * 1024 * 1024 });
+    expect(hash(Buffer.from(roomy.decompressSync(frame)))).toBe(hash(raw));
+  });
+
+  test('a tight maxCompressedSize rejects over-limit input before decoding', async () => {
+    const raw = compressible(512 * 1024);
+    const frame = Buffer.from(zlib.zstdCompressSync(raw, {}));
+    const guarded = await makeCodec({ maxCompressedSize: 8 });
+    expect(() => guarded.decompressSync(frame)).toThrow(/maxSrcSize/);
   });
 });
 

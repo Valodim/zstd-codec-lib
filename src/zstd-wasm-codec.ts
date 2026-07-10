@@ -103,14 +103,18 @@ class ZstdCodec {
     // passed. Store the default; don't validate here.
     this._level = options.level ?? 1;
     this._maxSrcSize = options.maxSrcSize ?? _DEFAULT_MAX_SRC;
-    // Coalesce undefined → 0 before Math.max: a bare `new ZstdCodec()` must
-    // still get the finite floor, not Math.max(undefined, …) === NaN (which
-    // would disable the size / decompression-bomb guards entirely).
-    // Use `* 64`, not `<< 6`: JS bitwise ops are signed 32-bit, so a larger
-    // default would silently wrap negative and re-disable the guards.
+    // Decompression-bomb guards. When the option is unset, default to a large
+    // finite floor; when a caller gives a positive value, honor it verbatim —
+    // *including one below the floor*, since a guard you can only loosen is no
+    // guard at all. Coalesce undefined / non-positive / NaN to the floor so a
+    // bad limit can never leave `x > limit` permanently false (a NaN limit
+    // would disable the guard entirely).
+    // Use `* 64`, not `<< 6`: JS bitwise ops are signed 32-bit, so the floor
+    // would silently wrap negative and re-disable the guards.
     const floor = _MAX_DST_BUF_DEFAULT * 64;
-    this._maxDecSrc = Math.max(options.maxCompressedSize ?? 0, floor);
-    this._maxDecDst = Math.max(options.maxDecompressedSize ?? 0, floor);
+    const guard = (v?: number): number => (typeof v === 'number' && v > 0 ? v : floor);
+    this._maxDecSrc = guard(options.maxCompressedSize);
+    this._maxDecDst = guard(options.maxDecompressedSize);
   }
 
   /** Initialize against a compiled codec WebAssembly module. */
@@ -304,6 +308,13 @@ class ZstdCodec {
 
     if (!expectedSize) expectedSize = _fss(compressedData);
 
+    // Bomb guard: a declared output larger than the limit is rejected before
+    // we decode anything. (The streaming path below enforces this incrementally
+    // in _decompressStream; the sync path below caps at _maxDstBuf, not
+    // _maxDecDst, so it needs its own check — a bare expectedSize of 0 means
+    // "unknown", so it falls through to streaming rather than tripping here.)
+    if (expectedSize > this._maxDecDst) throw new err(`dec size>maxDstSize lim`);
+
     // No expected size, or above the sync thresholds => stream. Complete
     // one-shot decode, so require the frame to finish.
     if (expectedSize === 0 || expectedSize > this._maxDstBuf || srcSize > _MAX_SRC_BUF) {
@@ -315,6 +326,10 @@ class ZstdCodec {
     this._HEAPU8.set(compressedData as Uint8Array, this._srcPtr);
     const result = this._exports.decompress(dstPtr, this._maxDstBuf, this._srcPtr, srcSize);
     if (result < 0) throw new err(`dec err ${result}`);
+    // Backstop: the single-pass path caps output at _maxDstBuf, not _maxDecDst,
+    // and a lying/absent Frame_Content_Size (or concatenated frames) can exceed
+    // the guard — reject rather than hand back an over-limit buffer.
+    if (result > this._maxDecDst) throw new err(`dec size>maxDstSize lim`);
     return this._HEAPU8.slice(dstPtr, dstPtr + result);
   }
 
