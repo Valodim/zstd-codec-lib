@@ -39729,6 +39729,10 @@ size_t decompressStreamStep(void) {
 /* Reset CCtx for a fresh frame at the given compression level. */
 WASM_EXPORT
 size_t initCompressor(int level) {
+    // Free the workspace before operation. Compress methods reuse their
+  // allocated space correctly, but intermittent decompress operations can
+  // clobber the memory layout.
+    ZSTD_cwksp_free(&cctx->workspace, cctx->customMem);
     size_t const r1 = ZSTD_CCtx_reset(cctx, ZSTD_reset_session_only);
     if (ZSTD_isError(r1)) return r1;
     size_t const r2 = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
@@ -39743,6 +39747,10 @@ WASM_EXPORT
 size_t compress(void* dst, size_t dstCapacity,
           const void* src, size_t srcSize,
           int level) {
+    // Free the workspace before operation. Compress methods reuse their
+    // allocated space correctly, but intermittent decompress operations can
+    // clobber the memory layout.
+    ZSTD_cwksp_free(&cctx->workspace, cctx->customMem);
     return ZSTD_compressCCtx(cctx, dst, dstCapacity, src, srcSize, level);
 }
 

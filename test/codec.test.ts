@@ -85,6 +85,49 @@ describe('single-instance compress↔decompress interleave', () => {
   });
 });
 
+/**
+ * Regression: streaming compress relocates the CCtx workspace high into the
+ * shared arena. A subsequent large *single-pass* decode (declared FCS,
+ * compressed < 2 MB) writes its output over that region. Before the
+ * cwksp-rebuild fix (initCompressor/compress free the workspace so it is
+ * rebuilt at the JS-anchored cursor), the next compress reused the clobbered
+ * workspace and trapped with an out-of-bounds access. The prior interleave
+ * test missed this because its big decode took the *streaming* decode path
+ * (small rolling buffer), which never overlaps the compressor workspace.
+ */
+describe('workspace-clobber regression (streaming-compress → single-pass decode → compress)', () => {
+  test('a large single-pass decode does not corrupt the compressor workspace', async () => {
+    const zlib = await import('node:zlib');
+    const local = await createCodec({ level: 1, maxSrcSize: 1 * 1024 * 1024 });
+
+    // Foreign frame with declared FCS whose compressed size stays under the
+    // 2 MB single-pass input cap but decodes to ~6 MB — big enough to overlap
+    // the relocated streaming-compress workspace.
+    const bigConst = new Uint8Array(6 * 1024 * 1024).fill(0xab);
+    const frame = new Uint8Array(
+      zlib.zstdCompressSync(bigConst, {
+        params: { [zlib.constants.ZSTD_c_compressionLevel]: 1 },
+      }),
+    );
+    expect(frame.length).toBeLessThan(2 * 1024 * 1024);
+
+    const streamInput = txt(200_000); // ~9 MB > maxSrcSize → streaming compress
+
+    // 1) streaming compress relocates the workspace high into the arena.
+    expect(bufEq(local.decompressSync(local.compressSync(streamInput)), streamInput)).toBe(true);
+    // 2) large single-pass decode writes over that region.
+    expect(bufEq(local.decompressSync(frame), bigConst)).toBe(true);
+    // 3) streaming compress again must neither trap nor emit a corrupt frame.
+    expect(bufEq(local.decompressSync(local.compressSync(streamInput)), streamInput)).toBe(true);
+
+    // Same sequence, then a *sync* compress — guards the single-shot path too.
+    local.compressSync(streamInput);
+    local.decompressSync(frame);
+    const small = txt(50);
+    expect(bufEq(local.decompressSync(local.compressSync(small)), small)).toBe(true);
+  });
+});
+
 describe('host zstd cross-decode', () => {
   // Skip if host zstd isn't installed.
   const hostZstd = spawnSync('zstd', ['--version']);

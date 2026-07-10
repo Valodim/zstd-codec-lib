@@ -197,8 +197,11 @@ class ZstdCodec {
     const srcSize = input.length;
     if (srcSize > this._maxSrcSize) return this._compressStream(input, true, level);
 
-    // Sync compress uses the committed CCtx workspace (below H0); no heap
-    // allocation, so no setHeapEnd needed even after a prior decode.
+    // Anchor the CCtx workspace above the compress output before compressing.
+    // The C `compress` frees the cwksp so it is rebuilt here deterministically,
+    // rather than reusing a workspace a prior streaming compress relocated high
+    // into the shared arena and an intervening decode may have clobbered.
+    this._exports.setHeapEnd(this._dstPtrEnc + this._dstCap);
     this._HEAPU8.set(input, this._srcPtr);
     const lvl = _assertLevel1(level ?? this._level);
     const r = this._exports.compress(this._dstPtrEnc, this._dstCap, this._srcPtr, srcSize, lvl);
