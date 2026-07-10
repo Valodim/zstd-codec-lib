@@ -93,13 +93,15 @@ LDFLAGS += -Wl,--print-map
 # Lvl1 codec memory layout (12 MB). A single instance of this module serves
 # both directions (compress and decompress time-share one working arena; see
 # src/zstd-wasm-codec.ts), so the budget must cover whichever op is larger.
-#   Compress (the bigger consumer):
-#     64KB stack + ~256KB rodata/static + ~1MB CCtx workspace +
-#     4MB src buf (_DEFAULT_MAX_SRC) + ~4.1MB dst buf (compressBound(4MB))
-#     ≈ ~10 MB. Round up to 12 MB for headroom.
-#   Decompress: 64KB stack + ~256KB rodata + ~1MB CCtx (also allocated by
-#     _initialize) + ~96KB DCtx + 2MB src + ~4.5MB dst (4MB window +
-#     3*128KB blocks + margin) ≈ ~8 MB; fits.
+# The compressor's static CCtx workspace (~1.3MB, ZSTD_initStaticCCtx, sized
+# by ZSTD_estimateCStreamSize) sits at the bottom (0x40000), so H0 (= _srcPtr)
+# lands just above it; both ops share the arena above H0.
+#   Compress (the bigger consumer): 64KB stack + ~256KB rodata/static +
+#     ~1.3MB static workspace + 4MB src buf (_DEFAULT_MAX_SRC) + ~4.1MB dst
+#     buf (compressBound(4MB)) ≈ ~10 MB peak. Round up to 12 MB for headroom.
+#   Decompress: 64KB stack + ~256KB rodata + ~1.3MB static workspace + ~96KB
+#     DCtx + 2MB src + up to ~7.4MB dst (_maxDstBuf, clamped to leave a 1MB
+#     tail) ≈ ~11.5 MB peak; fits (the single-pass dst is sized to the edge).
 # global-base must be >= stack-size when --stack-first is used.
 LDFLAGS_BASE = $(LDFLAGS) -Wl,--global-base=65536 -Wl,--initial-heap=12386304 -Wl,--initial-memory=12582912
 LDFLAGS_BASE += $(foreach fn,$(EXPORTS),-Wl,--export=$(fn))

@@ -395,7 +395,7 @@ describe('size-hint parsing boundaries', () => {
   test('concatenated frames exceeding the sync dst buffer stay safe', async () => {
     const codec = await makeCodec();
 
-    // Each frame declares only ~1 MB (well under the ~8.2 MB sync buffer), but
+    // Each frame declares only ~1 MB (well under the ~7.4 MB sync buffer), but
     // the concatenation totals 12 MB — _fss sees only the first frame's size.
     const oneMB = Buffer.alloc(1024 * 1024, 0xab);
     const frame = Buffer.from(zlib.zstdCompressSync(oneMB, {}));

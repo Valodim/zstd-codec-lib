@@ -198,9 +198,10 @@ void* memcpy(void* dest, const void* src, size_t n)  { return __builtin_memcpy(d
 void* memset(void* s, int c, size_t n)               { return __builtin_memset(s, c, n); }
 void* memmove(void* dest, const void* src, size_t n) { return __builtin_memmove(dest, src, n); }
 
-/* CCtx singleton. Allocated once during _initialize via the bump
- * allocator, sized from ZSTD_WASM_INIT_LEVEL (level 1 in the shipped build).
- * Other supported levels reuse the same workspace via ZSTD_CCtx_reset. */
+/* CCtx singleton. A *static* CCtx (ZSTD_initStaticCCtx) over a fixed
+ * workspace bump-allocated once during _initialize, sized from
+ * ZSTD_WASM_INIT_LEVEL. A static CCtx never mallocs or resizes at runtime, so
+ * every compress reuses this one workspace in place. */
 static ZSTD_CCtx* cctx;
 
 WASM_EXPORT
@@ -214,7 +215,7 @@ void resetDecoder(void) {
 /* Decoder window cap. 4 MB + 1 (windowLog 22, level 9). */
 #define ZSTD_WASM_MAX_WINDOW_SIZE 4194305
 
-/* Level whose cParams size the committed workspace. */
+/* Level whose cParams size the static compressor workspace. */
 #define ZSTD_WASM_INIT_LEVEL 1
 
 void _initialize(void) {
@@ -224,30 +225,26 @@ void _initialize(void) {
      * rodata (default cparams, code tables, etc) so 256KB is safe. */
     setHeapEnd(262144);
 
-    /* Encoder side: create the CCtx and commit its cwksp workspace *now*,
-     * before JS starts malloc-ing src/dst buffers, so the heap cursor (H0)
-     * comes to rest above the workspace and subsequent JS-side malloc()s land
-     * past it. Note the workspace committed here does NOT stay resident: every
-     * compress()/initCompressor() frees it and rebuilds it at the JS-anchored
-     * cursor (above the compress output), so this init-time copy is abandoned
-     * after the first compress. Its lasting purpose is only to fix H0.
+    /* Encoder side: reserve a *fixed static* compressor workspace now, at the
+     * bottom of the heap (0x40000), before JS starts malloc-ing src/dst. It is
+     * sized by ZSTD_estimateCStreamSize(level) — the worst case for this level:
+     * full window (pledgedSrcSize=UNKNOWN, so no ZSTD_adjustCParams downsizing)
+     * plus the buffered streaming in/out staging. Single-shot compress needs
+     * strictly less (non-buffered), so both paths fit this one buffer.
      *
-     * ZSTD_compressBegin() is the right primitive: it sizes the workspace
-     * from the level's cParams with pledgedSrcSize=ZSTD_CONTENTSIZE_UNKNOWN,
-     * so the full windowLog-19 (level-1) workspace is committed regardless
-     * of any input size. A throwaway ZSTD_compressCCtx(..., src, 8, ...) does
-     * NOT work here: ZSTD_adjustCParams downsizes windowLog to the 8-byte
-     * input (~windowLog 6), committing a tiny workspace that the first real
-     * compression then has to grow — defeating the point.
+     * Why static: a static CCtx never reallocates. ZSTD_resetCCtx_internal
+     * bails with `memory_allocation` instead of resizing when staticSize != 0,
+     * and its "workspace too large" shrink path is gated to non-static ctxs —
+     * so this workspace is never freed, grown, or relocated. It therefore stays
+     * put in [0x40000, H0), which the decoder never writes (its lowest write is
+     * _srcPtr == H0), so every compress reuses it in place.
      *
-     * Only the non-buffered (single-shot) workspace is committed here; the
-     * streaming path (compressStreamStep / ZSTD_compressStream2) adds its
-     * input/output staging buffers lazily on first use. Either way the bump
-     * allocator is bounds-checked, so an over-budget maxSrcSize
-     * configuration surfaces as a catchable ZSTD memory_allocation error
-     * rather than an out-of-bounds write. */
-    cctx = ZSTD_createCCtx();
-    ZSTD_compressBegin(cctx, ZSTD_WASM_INIT_LEVEL);
+     * wsSize is ~1.3 MB and the heap starts at 0x40000, so the workspace always
+     * fits the 12 MB layout; the `ws ? ... : 0` is just belt-and-suspenders for
+     * the malloc contract (a NULL cctx would fault on first compress). */
+    size_t const wsSize = ZSTD_estimateCStreamSize(ZSTD_WASM_INIT_LEVEL);
+    void* const ws = malloc(wsSize);
+    cctx = ws ? ZSTD_initStaticCCtx(ws, wsSize) : (ZSTD_CCtx*)0;
 }
 
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
@@ -513,10 +510,8 @@ size_t decompressStreamStep(void) {
 /* Reset CCtx for a fresh frame at the given compression level. */
 WASM_EXPORT
 size_t initCompressor(int level) {
-    // Free the workspace before operation. Compress methods reuse their
-  // allocated space correctly, but intermittent decompress operations can
-  // clobber the memory layout.
-    ZSTD_cwksp_free(&cctx->workspace, cctx->customMem);
+    // The static workspace persists below _srcPtr, which decode never writes,
+    // so a session-only reset reuses it in place.
     size_t const r1 = ZSTD_CCtx_reset(cctx, ZSTD_reset_session_only);
     if (ZSTD_isError(r1)) return r1;
     size_t const r2 = ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
@@ -531,10 +526,8 @@ WASM_EXPORT
 size_t compress(void* dst, size_t dstCapacity,
           const void* src, size_t srcSize,
           int level) {
-    // Free the workspace before operation. Compress methods reuse their
-    // allocated space correctly, but intermittent decompress operations can
-    // clobber the memory layout.
-    ZSTD_cwksp_free(&cctx->workspace, cctx->customMem);
+    // Reuses the static workspace in place (see initCompressor); a static CCtx
+    // never reallocates, so this makes no heap allocation.
     return ZSTD_compressCCtx(cctx, dst, dstCapacity, src, srcSize, level);
 }
 
