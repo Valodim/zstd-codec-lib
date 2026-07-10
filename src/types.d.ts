@@ -25,7 +25,7 @@ export interface DecoderWasmExports extends BaseWasmExports {
   decompressStreamStep(): number;
 
   /** Resets the decompression context */
-  resetDecoder(): number;
+  resetDecoder(): void;
 }
 
 /*
