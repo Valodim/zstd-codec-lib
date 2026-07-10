@@ -16,29 +16,27 @@ import type { CodecOptions, StreamResult } from './types.js';
  * ║   0x10000  stream structs: in_buffer(16) + out_buffer(16)  ── shared       ║
  * ║            address = exports.getInBufferPtr()                              ║
  * ║   0x10020  static ZSTD_DCtx (~96 KB) + rodata           ── decode-only     ║
- * ║   0x40000  CCtx cwksp workspace (~1 MB, ZSTD_compressBegin)  ── persistent ║
+ * ║   0x40000  static compressor cwksp (ZSTD_initStaticCCtx, ~1.3 MB)          ║
  * ║      H0    heap cursor after _initialize  ── top of per-instance state     ║
  * ║   ────────────────────────────────────────────────────────────────         ║
  * ║   [ H0 ................................. 12 MB ]  SHARED WORKING ARENA     ║
  * ║                                                                            ║
- * ║  Two invariants keep the two contexts from stepping on each other:         ║
- * ║   • decode's arena starts at H0, so decode never touches [0x40000, H0)     ║
- * ║     — the CCtx workspace survives across decodes.                          ║
- * ║   • compress's workspace starts at 0x40000 (above the DCtx), so            ║
- * ║     compress never touches the DCtx.                                       ║
+ * ║  How the two directions coexist (they never run at once):                  ║
+ * ║   • the compressor is a static CCtx whose workspace (incl. its buffered    ║
+ * ║     in/out staging) is pinned at 0x40000, below _srcPtr. The decoder never ║
+ * ║     writes below _srcPtr, so it survives every decode untouched.           ║
+ * ║   • a static CCtx never reallocates (it errors instead), so compress makes ║
+ * ║     no heap allocation at all; the decoder owns everything above _srcPtr.  ║
  * ║                                                                            ║
  * ║  Arena anchors (all relative to _srcPtr === H0):                           ║
  * ║   • _srcPtr    = H0                     shared input anchor (both dirs)    ║
  * ║   • _dstPtrEnc = H0 + maxSrcSize        compress output (cap _dstCap)      ║
  * ║   • _dstPtrDec = H0 + _MAX_SRC_BUF      decompress output                  ║
  * ║                                                                            ║
- * ║  Heap discipline (why the lazily-malloc'd staging never collides):         ║
- * ║   • before streaming compress: setHeapEnd(_dstPtrEnc + _dstCap) so the     ║
- * ║     CStream staging is bump-allocated *above* the compress output,         ║
- * ║     deterministically regardless of a prior decode.                        ║
+ * ║  Heap discipline (only decode allocates on the shared heap):               ║
+ * ║   • compress needs no setHeapEnd: workspace + staging are the static cwksp.║
  * ║   • before decompress: setHeapEnd(_dstPtrDec) so the decoder's inBuff/     ║
  * ║     outBuff land above the decompress output.                              ║
- * ║   • sync compress uses only the committed CCtx workspace (no malloc).      ║
  * ╚════════════════════════════════════════════════════════════════════════════╝
  *
  * Level-9 decoder memory budget reference (windowLog 22 → 4 MB window):
@@ -82,8 +80,8 @@ declare class ZstdCodec {
      *  • ZSTD_compressCCtx pledges srcSize, so the frame header carries the
      *    Frame_Content_Size. The streaming path leaves FCS unknown, which would
      *    defeat decompressSync's _fss fast-path detection on self-round-trips.
-     *  • uses only the committed CCtx workspace: no lazily-malloc'd CStream
-     *    staging, no setHeapEnd, no chunk concatenation.
+     *  • no CStream input/output staging and no chunk concatenation — the
+     *    single-shot compress reuses the fixed static CCtx workspace directly.
      */
     compressSync(input: Uint8Array, level?: number): Uint8Array;
     /**
@@ -112,13 +110,14 @@ declare class ZstdCodec {
      * Limitation — concatenated multi-frame input: the output size is inferred
      * via `_fss`, which reads only the FIRST frame's declared Frame_Content_Size.
      * When several frames are concatenated and that first frame declares a size
-     * within the sync buffer (`_maxDstBuf`, ~9.4 MB) while the compressed input
-     * stays under `_MAX_SRC_BUF` (2 MB), the single-pass path is chosen — but the
-     * *total* decompressed output across all frames can exceed the ~9.4 MB sync
-     * buffer (e.g. many highly-compressible frames). In that case the decode
-     * throws a clean `dec err` (dstSize_tooSmall) rather than returning partial
-     * or corrupt bytes; it never silently truncates. A single frame is never
-     * affected — its own declared/unknown size routes large outputs to streaming.
+     * within the sync buffer (`_maxDstBuf`, ~7.4 MB in the default layout) while
+     * the compressed input stays under `_MAX_SRC_BUF` (2 MB), the single-pass
+     * path is chosen — but the *total* decompressed output across all frames can
+     * exceed the ~7.4 MB sync buffer (e.g. many highly-compressible frames). In
+     * that case the decode throws a clean `dec err` (dstSize_tooSmall) rather
+     * than returning partial or corrupt bytes; it never silently truncates. A
+     * single frame is never affected — its own declared/unknown size routes
+     * large outputs to streaming.
      * Callers that decode externally-concatenated, high-ratio streams of unknown
      * total size should not rely on this method for those inputs.
      */

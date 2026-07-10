@@ -7,6 +7,8 @@ var rb = (d, b, n) => {
   return o;
 };
 var _fss = (dat) => {
+  if (rb(dat, 0, 4) !== 4247762216)
+    return 0;
   const flg = dat[4];
   const ss = flg >> 5 & 1, df = flg & 3, fcf = flg >> 6;
   const off = 6 - ss + (df == 3 ? 4 : df);
@@ -54,7 +56,11 @@ class ZstdCodec {
   _flushAt = 0;
   constructor(options = {}) {
     this._level = options.level ?? 1;
-    this._maxSrcSize = options.maxSrcSize ?? _DEFAULT_MAX_SRC;
+    const ms = options.maxSrcSize;
+    if (ms !== undefined && !(typeof ms === "number" && ms > 0)) {
+      throw new err(`invalid maxSrcSize: ${ms}`);
+    }
+    this._maxSrcSize = ms ?? _DEFAULT_MAX_SRC;
     const floor = _MAX_DST_BUF_DEFAULT * 64;
     const guard = (v) => typeof v === "number" && v > 0 ? v : floor;
     this._maxDecSrc = guard(options.maxCompressedSize);
@@ -100,7 +106,6 @@ class ZstdCodec {
     const srcSize = input.length;
     if (srcSize > this._maxSrcSize)
       return this._compressStream(input, true, level);
-    this._exports.setHeapEnd(this._dstPtrEnc + this._dstCap);
     this._HEAPU8.set(input, this._srcPtr);
     const lvl = _assertLevel1(level ?? this._level);
     const r = this._exports.compress(this._dstPtrEnc, this._dstCap, this._srcPtr, srcSize, lvl);
@@ -113,7 +118,6 @@ class ZstdCodec {
       throw new err("not init");
     const lvl = _assertLevel1(level ?? this._level);
     if (reset) {
-      this._exports.setHeapEnd(this._dstPtrEnc + this._dstCap);
       const r2 = this._exports.initCompressor(lvl);
       if (r2 < 0)
         throw new err(`initCompressor err ${r2 >>> 0}`);
@@ -162,7 +166,7 @@ class ZstdCodec {
       throw new err("not init");
     const srcSize = compressedData.length;
     if (srcSize > this._maxDecSrc)
-      throw new err(`comp dat>maxSrcSize lim`);
+      throw new err(`comp dat>maxCompressedSize lim`);
     if (!expectedSize)
       expectedSize = _fss(compressedData);
     if (expectedSize > this._maxDecDst)
