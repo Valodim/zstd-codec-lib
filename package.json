@@ -24,7 +24,6 @@
   "typings": "./dist/types/index.node.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/index.web.inlined.d.ts",
       "node": {
         "types": "./dist/types/index.node.d.ts",
         "import": "./dist/esm/index.node.js",
@@ -35,6 +34,7 @@
         "import": "./dist/esm/index.inlined.js",
         "default": "./dist/esm/index.inlined.js"
       },
+      "types": "./dist/types/index.web.inlined.d.ts",
       "development": "./dist/esm/index.inlined.js",
       "import": "./dist/esm/index.inlined.js",
       "default": "./dist/esm/index.node.js"
