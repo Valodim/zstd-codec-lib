@@ -2,8 +2,8 @@
  * Browser Test Adapter
  *
  * Uses Playwright to run tests in browsers (Chromium, Firefox, WebKit).
- * This adapter tests the Web bundle (dist/zstd-wasm-decoder.js + zstd.wasm)
- * loaded via test-harness.html
+ * Loads test-harness.html, which imports the built entrypoint selected by
+ * TEST_VARIANT (web, web-perf, web-inlined, web-inlined-perf).
  */
 
 import { type Browser, chromium, firefox, type Page, webkit } from 'playwright';
@@ -29,8 +29,12 @@ export class BrowserAdapter {
     this.browser = await browserType.launch({ headless: true });
     this.page = await this.browser.newPage();
 
-    // Load the test harness HTML which loads the bundle
-    await this.page.goto(`http://localhost:42069/bundles/test-harness.html`);
+    // Load the test harness HTML, which dynamically imports the built
+    // entrypoint selected by TEST_VARIANT. Non-web variants (e.g. the default
+    // 'node') fall back to the external web bundle.
+    const requested = process.env.TEST_VARIANT;
+    const variant = requested?.startsWith('web') ? requested : 'web';
+    await this.page.goto(`http://localhost:42069/bundles/test-harness.html?variant=${variant}`);
 
     // Wait for WASM to initialize
     await this.page.waitForFunction(

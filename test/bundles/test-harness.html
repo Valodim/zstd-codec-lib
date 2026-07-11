@@ -6,21 +6,29 @@
 </head>
 <body>
   <script type="module">
-    import { ZstdCodec } from 'http://localhost:42069/dist/esm/index.web.js';
+    // Which built artifact to exercise is selected by the test runner via
+    // ?variant=... (see adapters/browser-adapter.ts). Each entrypoint's own
+    // createCodec() runs its real loader path — fetch + compileStreaming for
+    // the external variants, inlined base64 + DecompressionStream for the
+    // inlined ones — so the loaders are covered too, not just the codec.
+    const variantMap = {
+      'web': '/dist/esm/index.web.js',
+      'web-perf': '/dist/esm/index.web.perf.js',
+      'web-inlined': '/dist/esm/index.inlined.js',
+      'web-inlined-perf': '/dist/esm/index.inlined.perf.js',
+    };
+    const variant = new URLSearchParams(location.search).get('variant') || 'web';
+    const { createCodec } = await import(variantMap[variant] || variantMap['web']);
 
-    // Load and compile WASM module once
-    const wasmUrl = 'http://localhost:42069/dist/esm/zstd.wasm';
-    const wasmModule = await WebAssembly.compileStreaming(fetch(wasmUrl));
-
-    const mainDecoder = new ZstdCodec({
+    const mainDecoder = await createCodec({
       maxCompressedSize: 512 * 1024 * 1024,
       maxDecompressedSize: 512 * 1024 * 1024
     });
-    mainDecoder.init(wasmModule);
 
     // Expose API
     window.ZstdWasm = {
       ready: true,
+      variant,
 
       decompressSync: async (data, opts = {}) => {
         return mainDecoder.decompressSync(data);
@@ -28,7 +36,7 @@
 
       decompress: (data, opts) => window.ZstdWasm.decompressSync(data, opts),
     };
-    console.log('WASM decoder initialized');
+    console.log('WASM decoder initialized, variant:', variant);
   </script>
 </body>
 </html>
