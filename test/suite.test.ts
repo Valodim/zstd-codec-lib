@@ -92,8 +92,19 @@ beforeAll(async () => {
 
   if (adapterType === 'browser-all') {
     const { createBrowserAdapter } = await import('./adapters/browser-adapter');
-    const browsers = ['chromium', 'firefox', 'webkit'] as const;
-    console.log('Launching all browsers in parallel...');
+    // TEST_BROWSERS (comma-separated) narrows the matrix; defaults to all three.
+    // The Nix dev shell drops webkit because the nixpkgs playwright-driver ships
+    // no working headless WPE (libgbm + the libglvnd dispatcher, but no mesa EGL
+    // vendor), so its pages crash with "Could not create WPE EGL display". CI runs
+    // on Ubuntu with a full `playwright install`, so webkit stays covered there.
+    const allBrowsers = ['chromium', 'firefox', 'webkit'] as const;
+    const requested = process.env.TEST_BROWSERS?.split(',')
+      .map((b) => b.trim())
+      .filter(Boolean);
+    const browsers = requested?.length
+      ? allBrowsers.filter((b) => requested.includes(b))
+      : allBrowsers;
+    console.log(`Launching browsers in parallel: ${browsers.join(', ')}`);
     const adapters = await Promise.all(browsers.map((b) => createBrowserAdapter(b)));
     decompressAdapter = {
       decompress: async (data: any, opts: any) => {

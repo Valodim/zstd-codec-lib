@@ -22,4 +22,9 @@ in
 
     # for driving playwright
     PLAYWRIGHT_BROWSERS_PATH = playwrightPkgs.playwright-driver.browsers;
+    # Skip webkit locally: the nixpkgs playwright-driver ships no working
+    # headless WebKit (it provides mesa-libgbm + the libglvnd EGL dispatcher but
+    # no mesa EGL vendor), so its pages crash with "Could not create WPE EGL
+    # display". Chromium and firefox work fine.
+    TEST_BROWSERS = "chromium,firefox";
   }
