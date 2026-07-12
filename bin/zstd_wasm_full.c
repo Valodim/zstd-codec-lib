@@ -306,6 +306,12 @@ size_t decompress(void* dst, size_t dstCapacity, const void* src, size_t srcSize
 
 WASM_EXPORT
 size_t decompressStreamStep(void) {
+    /* Upstream ZSTD_decompressStream entry guards: a struct with pos > size
+     * would underflow the (iend - ip) / (oend - op) size_t arithmetic below.
+     * Unreachable via the JS wrapper (pos is always written 0), kept as
+     * defense-in-depth for direct callers of the wasm API. */
+    RETURN_ERROR_IF(in_buffer->pos > in_buffer->size, srcSize_wrong, "");
+    RETURN_ERROR_IF(out_buffer->pos > out_buffer->size, dstSize_tooSmall, "");
     const char* const src = (const char*)in_buffer->src;
     const char* const istart = src + in_buffer->pos;
     const char* const iend = src + in_buffer->size;
