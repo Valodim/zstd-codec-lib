@@ -178,9 +178,12 @@ function loadTestFile(filename: string): Buffer {
 function randomBuffer(size: number): Buffer {
   if (!randomBuffers.has(size)) {
     const chunks: Buffer[] = [];
-    const seed = createHash('sha1').update(`seed-${size}`).digest();
+    // SHA-256 digests are 32 bytes, matching the 32-byte stride below; SHA-1
+    // (20 bytes) left a 12-byte hole per stride, so the buffer came out at only
+    // 62.5% of the requested size.
+    const seed = createHash('sha256').update(`seed-${size}`).digest();
     for (let offset = 0; offset < size; offset += 32) {
-      const chunk = createHash('sha1')
+      const chunk = createHash('sha256')
         .update(seed)
         .update(Buffer.from([offset >> 24, offset >> 16, offset >> 8, offset]))
         .digest();
