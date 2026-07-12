@@ -100,12 +100,14 @@ class ZstdCodec {
     // per call); a decode-only codec must not throw just because a level was
     // passed. Store the default; don't validate here.
     this._level = options.level ?? 1;
-    // maxSrcSize sizes the compress buffers and the streaming chunk size, so a
-    // non-positive or NaN value is a caller error (0 would drive the streaming
-    // chunk size to 0 and loop forever). Reject it rather than silently
-    // substituting a default the caller didn't ask for. undefined => default.
+    // maxSrcSize sizes the compress buffers and the streaming chunk size, so
+    // anything but a positive integer is a caller error (0 would drive the
+    // streaming chunk size to 0 and loop forever; Infinity/non-integers coerce
+    // malloc(Infinity)->malloc(0), aliasing the src and dst pointers and making
+    // every compress fail opaquely). Reject it rather than silently substituting
+    // a default the caller didn't ask for. undefined => default.
     const ms = options.maxSrcSize;
-    if (ms !== undefined && !(typeof ms === 'number' && ms > 0)) {
+    if (ms !== undefined && !(typeof ms === 'number' && Number.isInteger(ms) && ms > 0)) {
       throw new err(`invalid maxSrcSize: ${ms}`);
     }
     this._maxSrcSize = ms ?? _DEFAULT_MAX_SRC;

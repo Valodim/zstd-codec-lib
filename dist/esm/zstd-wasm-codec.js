@@ -60,7 +60,7 @@ class ZstdCodec {
   constructor(options = {}) {
     this._level = options.level ?? 1;
     const ms = options.maxSrcSize;
-    if (ms !== undefined && !(typeof ms === "number" && ms > 0)) {
+    if (ms !== undefined && !(typeof ms === "number" && Number.isInteger(ms) && ms > 0)) {
       throw new err(`invalid maxSrcSize: ${ms}`);
     }
     this._maxSrcSize = ms ?? _DEFAULT_MAX_SRC;
