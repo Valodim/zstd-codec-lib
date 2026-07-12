@@ -58,8 +58,7 @@
     "./wasm": "./dist/esm/zstd.wasm",
     "./wasm-perf": "./dist/esm/zstd-perf.wasm",
     "./types": {
-      "types": "./dist/types/index.node.d.ts",
-      "default": "./dist/types/index.node.d.ts"
+      "types": "./dist/types/index.node.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -85,6 +84,8 @@
   "files": [
     "src/*.ts",
     "src/*.d.ts",
+    "src/LICENSE",
+    "src/README.md",
     "dist/esm/**/*.js",
     "dist/esm/**/*.wasm",
     "dist/types/**/*.d.ts",
