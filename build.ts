@@ -270,6 +270,13 @@ await buildInlined('size');
 await buildInlined('perf');
 
 const webJs = readFileSync(join(ESM_DIR, 'index.web.js'), 'utf8');
+const wasmRefs = webJs.match(/zstd\.wasm/g)?.length ?? 0;
+if (wasmRefs !== 1) {
+  console.error(
+    `Expected exactly one 'zstd.wasm' reference in index.web.js to derive the perf entrypoint, found ${wasmRefs}.`,
+  );
+  process.exit(1);
+}
 writeFileSync(join(ESM_DIR, 'index.web.perf.js'), webJs.replace(/zstd\.wasm/g, 'zstd-perf.wasm'));
 console.log('Built: index.web.perf.js (via string replacement)');
 
