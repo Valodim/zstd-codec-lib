@@ -12,7 +12,10 @@ var _fss = (dat) => {
   const flg = dat[4];
   const ss = flg >> 5 & 1, df = flg & 3, fcf = flg >> 6;
   const off = 6 - ss + (df == 3 ? 4 : df);
-  return rb(dat, off, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
+  const len = fcf ? 1 << fcf : ss;
+  if (off + len > dat.length)
+    return 0;
+  return rb(dat, off, len) + (fcf == 1 ? 256 : 0);
 };
 function _concatUint8Arrays(arrays, ol) {
   if (arrays.length == 1)

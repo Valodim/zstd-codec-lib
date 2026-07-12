@@ -35,7 +35,12 @@ export const _fss = (dat: Uint8Array): number => {
   // Dictionary_ID field: offset = (6 - singleSegment) + dictIdBytes.
   // (Mind JS precedence — the dict-bytes ternary MUST be parenthesised.)
   const off = 6 - ss + (df == 3 ? 4 : df);
-  return rb(dat, off, fcf ? 1 << fcf : ss) + (fcf == 1 ? 256 : 0);
+  const len = fcf ? 1 << fcf : ss;
+  // A header truncated before the FCS field ends would make rb() read
+  // out-of-range bytes and return NaN, silently defeating the size-based
+  // routing and bomb-guard comparisons downstream. Treat it as "unknown" (0).
+  if (off + len > dat.length) return 0;
+  return rb(dat, off, len) + (fcf == 1 ? 256 : 0);
 };
 
 // Concatenate Uint8Array chunks into a single buffer
