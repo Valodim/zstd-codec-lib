@@ -251,16 +251,19 @@ async function buildInlined(variant: 'size' | 'perf') {
   const filePath = join(ESM_DIR, `${stem}${suffix}.js`);
   let code = readFileSync(filePath, 'utf8');
   code = code.replace('__WASM_BASE64_PLACEHOLDER__', base64);
+
+  // Terser (property-mangling of `_`-prefixed names) in place, mirroring the
+  // other minified configs above. The exports map resolves the browser `.` and
+  // `./perf` entry points to this `.js` file, so the hardened bundle must *be*
+  // this file — emitting a separate `.min.js` left it published but unreachable.
+  const minified = await minify(code, terserOptions);
+  if (minified.code) code = minified.code;
   writeFileSync(filePath, code);
 
-  const minified = await minify(code, terserOptions);
-  if (minified.code) {
-    writeFileSync(join(ESM_DIR, `${stem}${suffix}.min.js`), minified.code);
-    const gzipBytes = gzipSync(minified.code, { level: 6 }).length;
-    console.log(
-      `Built (minified): ${stem}${suffix}.min.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
-    );
-  }
+  const gzipBytes = gzipSync(code, { level: 6 }).length;
+  console.log(
+    `Built (minified): ${stem}${suffix}.js - ${gzipBytes.toLocaleString()} bytes (${(gzipBytes / 1024).toFixed(2)} KB) gzipped`,
+  );
 }
 
 await buildInlined('size');
