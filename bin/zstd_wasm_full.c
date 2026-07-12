@@ -84,6 +84,16 @@ void* getInBufferPtr(void) {
     return (void*)in_buffer;
 }
 
+/* Bump-allocator cursor: a mutable wasm global, zero-initialized by the
+ * runtime. _initialize() plants it at the heap base (0x40000, via setHeapEnd)
+ * as its first action.
+ *
+ * CONTRACT: _initialize() MUST run before any malloc/calloc. It is
+ * zero-initialized, so allocating first hands out pointers from address 0 — the
+ * shadow stack (--stack-first), then rodata/bss — and corrupts them silently,
+ * since those low addresses are backed linear memory, not a trap. The TS
+ * wrapper enforces this (init in _initCommon precedes every allocation); any
+ * direct caller of the raw wasm exports must call _initialize() first too. */
 extern unsigned char __heap_cursor;
 __asm__(
     ".globaltype __heap_cursor, i32\n"
