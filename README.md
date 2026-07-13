@@ -1,19 +1,22 @@
 ## zstd-wasm-codec
 
-Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor in a single module.
+Tiny & performant Zstandard codec for WebAssembly. Decoder + level-1 compressor in a single module. Based on [zstd-codec-lib](https://github.com/tadpole-labs/zstd-codec-lib) by Tadpole Labs.
 
-|          |                                                                                                                                                                                                                         |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Lightweight**      | 38kb / 48kb (zipped) for the size/perf-optimized codec (12 MB linear memory, decoder capped to a 4 MB window — level 9)                                                                                                                              |
-| **Performant**       | ~1.6x throughput vs Node.js zlib (V8), ~0.96x vs Bun (JSC)                                                                                                                          |
-| **Compatibility**    | • Single `ZstdCodec` (sync `compressSync` / `decompressSync`) API<br>• [>94% worldwide browsers](https://browsersl.ist/#q=%3E0.3%25%2C+chrome+%3E%3D+80%2C+edge+%3E%3D+80%2C+firefox+%3E%3D+113%2C+safari+%3E%3D+16.4%2C+ios_saf+%3E%3D+16.4%2C+not+dead%2C+fully+supports+wasm-simd%2C+fully+supports+wasm-bulk-memory%2C+fully+supports+wasm-signext)<br>• Node ≥ 22, Vite, Bun<br>• Can be loaded as [pre-compressed](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/build.ts) inline base64<br> or as separate .wasm for [CSP compliance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution)  |
-| **Tested**           | Validated against vectors from the zstd reference implementation. Codec output cross-decoded by the host `zstd` CLI in CI.                                                                                                              |
-| **Zero deps**        | No runtime dependencies (excluding build); compiled from source using latest clang & binaryen                                                                                        |
+This library follows the following criteria:
+
+- Simple API: ZstdCodec class, with synchronous compress and synchronous decompress methods only
+- Compression: Level 1 only, no dict support. We benchmarked this as the right compression level for our workload (JSON data)
+- Decompression: Up to level 9 (to be future-proof)
+- 38kb / 48kb (zipped) for the size/perf-optimized codec
+- Based on the zstd reference implementation
+- Thoroughly tested
+- Zero dependencies
 
 #### Implementation notes:
 - Given the [limitations of wasm memory management](https://github.com/WebAssembly/design/issues/1397) and to achieve appropriate code size & performance, memory is allocated to a fixed-size [ring buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/bin/zstd_wasm_full.c), avoiding heap growth entirely. A single WebAssembly instance serves both compression and decompression, time-sharing [one 12 MB buffer](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/src/zstd-wasm-codec.ts) that is [sufficiently sized](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/src/zstd-wasm-codec.ts) to handle the maximum memory required by a level-9 frame (4 MB decoder window).
 - For use in browsers, the module is asynchronously compiled & cached at page load.
 - Only the `fast` (lvl 1) strategy is pulled from upstream — heavier strategies (`dfast`/`greedy`/`lazy`/`btopt`/`btultra*`) are excluded via the upstream `ZSTD_EXCLUDE_*_BLOCK_COMPRESSOR` macros, so `--gc-sections` + LTO drop them entirely. Higher compression levels are not supported (any `level` other than `1` throws).
+- NodeJS supports zstd [natively](https://nodejs.org/docs/latest-v25.x/api/zlib.html#class-zstdoptions), so it's usually preferable to just use that.
 
 ## Usage
 
@@ -53,57 +56,17 @@ const decoded: Uint8Array = codec.decompressSync(compressed);
 
 ### Important Considerations
 - The default export is pre-minified and mangled. All builds tested against the full suite.
-- Legacy ZSTD format is not supported, and the presence of magic bytes is expected; some libraries have this disabled by default.
+- Legacy ZSTD format is not supported, and the presence of magic bytes is expected.
 - Dictionaries are not supported (in either direction). Frames that reference a dictionary ID fail with `ZSTD_error_dictionary_wrong`.
 - Consult [the reference](https://github.com/facebook/zstd/blob/448cd340879adc0ffe36ed1e26823ee2dcb3217b/lib/zstd_errors.h#L60) to interpret error codes, should any occur.
 - **Do not** use the wasm module standalone (without js).
-- **Do not** compress attacker-influenced input together with secret data — compression ratio is an information side-channel.
-<br><sub>
-[Side-channel attacks](https://blog.cloudflare.com/ai-side-channel-attack-mitigated/) &nbsp;|&nbsp;
-[CRIME](https://en.wikipedia.org/wiki/CRIME) &nbsp;|&nbsp;
-[BREACH](https://breachattack.com/) &nbsp;|&nbsp;
-[Lucky Thirteen](https://en.wikipedia.org/wiki/Lucky_Thirteen_attack)
-</sub>
 
-## Contributing
-### Prerequisites
-
-**macOS:**
-```bash
-brew install llvm binaryen zopfli
-```
-(Yarn berry is provided via Corepack, which ships with Node.)
-
-**Linux:**
-```bash
-sudo apt-get install clang lld binaryen zopfli
-```
-
-**Note:** macOS's default `/usr/bin/clang` is a symlink to Apple Clang 17, which lacks the linker 
-required for WebAssembly builds. You must install the full LLVM toolchain from Homebrew, build from 
-source, or download the binaries (as done by the [CI runner](https://github.com/tadpole-labs/zstd-codec-lib/blob/main/.github/workflows/build-setup.yml))
 
 ### Setup
 
-1. **Clone and install dependencies:**
-```bash
-git clone --recursive https://github.com/tadpole-labs/zstd-codec-lib.git
-cd zstd-codec-lib
-yarn install
-```
+The toolchain is defined via Nix in shell.nix. It is recommended to use direnv
+to load the correct tools during development, but nix-shell can also be used.
 
-2. **Configure LLVM path** (if not auto-detected):
-```bash
-# macOS with Homebrew:
-export LLVM_DIR=/opt/homebrew/opt/llvm
-
-# Linux:
-export LLVM_DIR=/usr
-```
-
-3. **Verify toolchain:**
-```bash
-make check-tools
 ```
 
 ### Development Workflow
